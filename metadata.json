@@ -1,0 +1,6 @@
+{
+  "name": "FastPOS",
+  "description": "Herramienta de gestión de inventario offline de alta velocidad con lógica FIFO y creación express.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
