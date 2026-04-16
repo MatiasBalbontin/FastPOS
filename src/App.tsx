@@ -108,6 +108,12 @@ export default function App() {
   }, [startDate, endDate]);
 
   useEffect(() => {
+    if (view === 'analytics') {
+      fetchAnalytics();
+    }
+  }, [view]);
+
+  useEffect(() => {
     // Auto-focus search input
     if (view === 'sales' && !isExpressModalOpen) {
       searchInputRef.current?.focus();
@@ -951,6 +957,22 @@ function EditProductModal({ product, onClose, onSuccess }: any) {
     }
   };
 
+  const handleDelete = async () => {
+    if (!window.confirm(`¿Está seguro que desea eliminar permanentemente el producto ${product.name}?`)) {
+      return;
+    }
+    const res = await fetch(`/api/products/${product.id}`, {
+      method: 'DELETE'
+    });
+    if (res.ok) {
+      toast.success('Producto eliminado');
+      onSuccess();
+    } else {
+      const data = await res.json();
+      toast.error(data.error || 'Error al eliminar');
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
       <div className="bg-white border border-[var(--line)] w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
@@ -1018,19 +1040,28 @@ function EditProductModal({ product, onClose, onSuccess }: any) {
             </div>
           </div>
 
-          <div className="pt-4 flex gap-4">
-            <button
-              type="submit"
-              className="flex-1 bg-[var(--primary)] text-white py-3 rounded-xl font-bold uppercase text-xs hover:bg-[var(--primary-dark)] shadow-lg shadow-blue-100 transition-all"
-            >
-              Guardar Cambios
-            </button>
+          <div className="pt-4 flex flex-col gap-4">
+            <div className="flex gap-4">
+              <button
+                type="submit"
+                className="flex-1 bg-[var(--primary)] text-white py-3 rounded-xl font-bold uppercase text-xs hover:bg-[var(--primary-dark)] shadow-lg shadow-blue-100 transition-all"
+              >
+                Guardar Cambios
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-6 border border-[var(--line)] py-3 rounded-xl font-bold uppercase text-xs hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
             <button
               type="button"
-              onClick={onClose}
-              className="px-6 border border-[var(--line)] py-3 rounded-xl font-bold uppercase text-xs hover:bg-gray-50 transition-colors"
+              onClick={handleDelete}
+              className="w-full flex items-center justify-center gap-2 text-red-500 border border-red-200 py-3 rounded-xl font-bold uppercase text-xs hover:bg-red-50 transition-colors bg-white mt-2"
             >
-              Cancelar
+              <Trash2 size={16} /> Eliminar Producto Permanentemente
             </button>
           </div>
         </form>
