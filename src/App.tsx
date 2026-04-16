@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
-import { 
-  Search, 
-  Package, 
-  BarChart3, 
-  ShoppingCart, 
-  AlertTriangle, 
-  Plus, 
-  X, 
+import {
+  Search,
+  Package,
+  BarChart3,
+  ShoppingCart,
+  AlertTriangle,
+  Plus,
+  X,
   Check,
   TrendingUp,
   ArrowRight,
@@ -25,13 +25,13 @@ import {
   FileUp
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
   ResponsiveContainer,
   PieChart,
   Pie,
@@ -65,8 +65,8 @@ const SidebarItem = ({ icon: Icon, label, active, onClick }: any) => (
     onClick={onClick}
     className={cn(
       "flex items-center gap-3 w-full px-4 py-3 text-sm font-semibold transition-all rounded-lg mb-1",
-      active 
-        ? "bg-[var(--primary)] text-white shadow-md shadow-blue-200" 
+      active
+        ? "bg-[var(--primary)] text-white shadow-md shadow-blue-200"
         : "text-gray-500 hover:bg-gray-100 hover:text-[var(--ink)]"
     )}
   >
@@ -84,7 +84,7 @@ export default function App() {
   const [isExpressModalOpen, setIsExpressModalOpen] = useState(false);
   const [scannedId, setScannedId] = useState('');
   const [lowStockThreshold, setLowStockThreshold] = useState(5);
-  
+
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const fetchProducts = async () => {
@@ -136,7 +136,7 @@ export default function App() {
   return (
     <div className="flex h-screen overflow-hidden">
       <Toaster position="top-right" theme="light" />
-      
+
       {/* Sidebar */}
       <div className="w-64 border-r border-[var(--line)] flex flex-col bg-white p-4">
         <div className="mb-8 px-2">
@@ -145,25 +145,25 @@ export default function App() {
             POS_EDITION v1.2.0
           </div>
         </div>
-        
+
         <nav className="flex-1 mt-4">
-          <SidebarItem 
-            icon={ShoppingCart} 
-            label="Terminal POS" 
-            active={view === 'sales'} 
-            onClick={() => setView('sales')} 
+          <SidebarItem
+            icon={ShoppingCart}
+            label="Terminal POS"
+            active={view === 'sales'}
+            onClick={() => setView('sales')}
           />
-          <SidebarItem 
-            icon={Package} 
-            label="Inventario" 
-            active={view === 'inventory'} 
-            onClick={() => setView('inventory')} 
+          <SidebarItem
+            icon={Package}
+            label="Inventario"
+            active={view === 'inventory'}
+            onClick={() => setView('inventory')}
           />
-          <SidebarItem 
-            icon={BarChart3} 
-            label="Reportes" 
-            active={view === 'analytics'} 
-            onClick={() => setView('analytics')} 
+          <SidebarItem
+            icon={BarChart3}
+            label="Reportes"
+            active={view === 'analytics'}
+            onClick={() => setView('analytics')}
           />
         </nav>
 
@@ -186,9 +186,9 @@ export default function App() {
       {/* Main Content */}
       <main className="flex-1 overflow-auto relative bg-[#F3F4F6]">
         {view === 'sales' && (
-          <SalesView 
-            searchInputRef={searchInputRef} 
-            onSale={handleSale} 
+          <SalesView
+            searchInputRef={searchInputRef}
+            onSale={handleSale}
             products={products}
             onProductNotFound={(id: string) => {
               setScannedId(id);
@@ -197,16 +197,16 @@ export default function App() {
           />
         )}
         {view === 'inventory' && (
-          <InventoryView 
-            products={products} 
-            onRefresh={fetchProducts} 
+          <InventoryView
+            products={products}
+            onRefresh={fetchProducts}
             lowStockThreshold={lowStockThreshold}
             setLowStockThreshold={setLowStockThreshold}
           />
         )}
         {view === 'analytics' && (
-          <AnalyticsView 
-            analytics={analytics} 
+          <AnalyticsView
+            analytics={analytics}
             startDate={startDate}
             setStartDate={setStartDate}
             endDate={endDate}
@@ -217,9 +217,9 @@ export default function App() {
 
       {/* Express Creation Modal */}
       {isExpressModalOpen && (
-        <ExpressModal 
-          initialId={scannedId} 
-          onClose={() => setIsExpressModalOpen(false)} 
+        <ExpressModal
+          initialId={scannedId}
+          onClose={() => setIsExpressModalOpen(false)}
           onSuccess={() => {
             setIsExpressModalOpen(false);
             fetchProducts();
@@ -237,8 +237,8 @@ function SalesView({ searchInputRef, onSale, products, onProductNotFound }: any)
   const [cart, setCart] = useState<{ product: Product; quantity: number }[]>([]);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
-  const filtered = products.filter((p: any) => 
-    p.id.toUpperCase().includes(query.toUpperCase()) || 
+  const filtered = products.filter((p: any) =>
+    p.id.toUpperCase().includes(query.toUpperCase()) ||
     p.name.toUpperCase().includes(query.toUpperCase())
   ).slice(0, 5);
 
@@ -246,9 +246,9 @@ function SalesView({ searchInputRef, onSale, products, onProductNotFound }: any)
     setCart(prev => {
       const existing = prev.find(item => item.product.id === product.id);
       if (existing) {
-        return prev.map(item => 
-          item.product.id === product.id 
-            ? { ...item, quantity: item.quantity + 1 } 
+        return prev.map(item =>
+          item.product.id === product.id
+            ? { ...item, quantity: item.quantity + 1 }
             : item
         );
       }
@@ -314,7 +314,7 @@ function SalesView({ searchInputRef, onSale, products, onProductNotFound }: any)
             className="w-full bg-white border border-[var(--line)] py-4 pl-12 pr-4 text-lg font-medium rounded-xl shadow-sm focus:outline-none focus:ring-2 ring-[var(--primary)]/20 transition-all"
             autoFocus
           />
-          
+
           {query && filtered.length > 0 && (
             <div className="absolute top-full left-0 w-full bg-white border border-[var(--line)] border-t-0 shadow-2xl z-10">
               {filtered.map((p: any) => (
@@ -384,7 +384,7 @@ function SalesView({ searchInputRef, onSale, products, onProductNotFound }: any)
             <div className="text-[10px] font-bold uppercase text-gray-400">Total a Pagar</div>
             <div className="text-4xl font-bold tracking-tight text-[var(--primary)]">${total.toLocaleString()}</div>
           </div>
-          <button 
+          <button
             disabled={cart.length === 0}
             onClick={() => setIsPaymentModalOpen(true)}
             className="w-full bg-[var(--primary)] text-white py-4 rounded-xl font-bold uppercase tracking-wider text-sm hover:bg-[var(--primary-dark)] shadow-lg shadow-blue-100 transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
@@ -396,10 +396,10 @@ function SalesView({ searchInputRef, onSale, products, onProductNotFound }: any)
 
       {/* Payment Modal */}
       {isPaymentModalOpen && (
-        <PaymentModal 
-          total={total} 
-          onClose={() => setIsPaymentModalOpen(false)} 
-          onConfirm={handleFinishSale} 
+        <PaymentModal
+          total={total}
+          onClose={() => setIsPaymentModalOpen(false)}
+          onConfirm={handleFinishSale}
         />
       )}
     </div>
@@ -429,14 +429,14 @@ function PaymentModal({ total, onClose, onConfirm }: any) {
 
           {!method ? (
             <div className="grid grid-cols-2 gap-6">
-              <button 
+              <button
                 onClick={() => setMethod('cash')}
                 className="flex flex-col items-center gap-4 p-8 border-2 border-[var(--line)] hover:bg-[var(--ink)] hover:text-[var(--bg)] transition-all group"
               >
                 <Banknote size={48} className="opacity-40 group-hover:opacity-100" />
                 <span className="font-bold uppercase text-sm tracking-widest">Efectivo</span>
               </button>
-              <button 
+              <button
                 onClick={() => setMethod('card')}
                 className="flex flex-col items-center gap-4 p-8 border-2 border-[var(--line)] hover:bg-[var(--ink)] hover:text-[var(--bg)] transition-all group"
               >
@@ -448,8 +448,8 @@ function PaymentModal({ total, onClose, onConfirm }: any) {
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
               <div>
                 <label className="text-[10px] font-bold uppercase opacity-50 block mb-2 text-center">Efectivo Recibido</label>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   autoFocus
                   value={received}
                   onChange={e => setReceived(e.target.value)}
@@ -457,7 +457,7 @@ function PaymentModal({ total, onClose, onConfirm }: any) {
                   className="w-full bg-white border-2 border-[var(--line)] p-4 text-3xl font-mono text-center focus:outline-none focus:ring-4 ring-black/5"
                 />
               </div>
-              
+
               <div className="p-6 border-2 border-dashed border-[var(--line)] bg-white/50 text-center">
                 <div className="text-[10px] font-bold uppercase opacity-50 mb-1">Vuelto a Entregar</div>
                 <div className={cn(
@@ -469,13 +469,13 @@ function PaymentModal({ total, onClose, onConfirm }: any) {
               </div>
 
               <div className="flex gap-4">
-                <button 
+                <button
                   onClick={() => setMethod(null)}
                   className="flex-1 border border-[var(--line)] py-4 font-bold uppercase text-xs hover:bg-white transition-colors"
                 >
                   Volver
                 </button>
-                <button 
+                <button
                   disabled={change < 0}
                   onClick={onConfirm}
                   className="flex-[2] bg-[var(--ink)] text-[var(--bg)] py-4 font-bold uppercase text-xs hover:opacity-90 transition-opacity disabled:opacity-30"
@@ -494,13 +494,13 @@ function PaymentModal({ total, onClose, onConfirm }: any) {
                     <p className="text-xs opacity-50 mt-2">Asegúrese de que la transacción en el terminal sea exitosa.</p>
                   </div>
                   <div className="flex gap-4">
-                    <button 
+                    <button
                       onClick={() => setMethod(null)}
                       className="flex-1 border border-[var(--line)] py-4 font-bold uppercase text-xs hover:bg-white transition-colors"
                     >
                       Volver
                     </button>
-                    <button 
+                    <button
                       onClick={() => setConfirmCard(true)}
                       className="flex-[2] bg-[var(--ink)] text-[var(--bg)] py-4 font-bold uppercase text-xs hover:opacity-90 transition-opacity"
                     >
@@ -516,13 +516,13 @@ function PaymentModal({ total, onClose, onConfirm }: any) {
                     <p className="text-xs opacity-70 mt-2">¿Está seguro de que desea cargar esta venta a tarjeta?</p>
                   </div>
                   <div className="flex gap-4">
-                    <button 
+                    <button
                       onClick={() => setConfirmCard(false)}
                       className="flex-1 border border-[var(--line)] py-4 font-bold uppercase text-xs hover:bg-white transition-colors"
                     >
                       No, Revisar
                     </button>
-                    <button 
+                    <button
                       onClick={onConfirm}
                       className="flex-[2] bg-green-600 text-white py-4 font-bold uppercase text-xs hover:opacity-90 transition-opacity"
                     >
@@ -546,8 +546,8 @@ function InventoryView({ products, onRefresh, lowStockThreshold, setLowStockThre
   const [showPinModal, setShowPinModal] = useState<any>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
-  const filtered = products.filter((p: any) => 
-    p.name.toLowerCase().includes(search.toLowerCase()) || 
+  const filtered = products.filter((p: any) =>
+    p.name.toLowerCase().includes(search.toLowerCase()) ||
     p.id.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -565,13 +565,13 @@ function InventoryView({ products, onRefresh, lowStockThreshold, setLowStockThre
   const handleExportExcel = async () => {
     const res = await fetch('/api/export');
     const data = await res.json();
-    
+
     // Flatten data for Excel
     const exportData = data.products.map((p: any) => {
       const productBatches = data.batches.filter((b: any) => b.product_id === p.id);
       const totalStock = productBatches.reduce((sum: number, b: any) => sum + b.quantity, 0);
       const oldestBatch = productBatches[0];
-      
+
       return {
         'ID_BARCODE': p.id,
         'NOMBRE': p.name,
@@ -596,22 +596,22 @@ function InventoryView({ products, onRefresh, lowStockThreshold, setLowStockThre
           <p className="text-sm text-gray-500 mt-1">Control total de existencias y lotes FIFO.</p>
         </div>
         <div className="flex gap-4 items-center">
-          <button 
+          <button
             onClick={handleExportExcel}
             className="flex items-center gap-2 border border-[var(--line)] px-4 py-2 bg-white rounded-lg text-[10px] font-bold uppercase hover:bg-gray-50 transition-all shadow-sm"
           >
             <Download size={14} /> Exportar Excel
           </button>
-          <button 
+          <button
             onClick={() => setIsImportModalOpen(true)}
             className="flex items-center gap-2 border border-[var(--line)] px-4 py-2 bg-white rounded-lg text-[10px] font-bold uppercase hover:bg-gray-50 transition-all shadow-sm"
           >
             <Upload size={14} /> Importar
           </button>
-          
+
           <div className="flex items-center gap-2 border border-[var(--line)] px-4 py-2 bg-white rounded-lg shadow-sm">
             <span className="text-[10px] font-bold uppercase text-gray-400">Umbral Stock:</span>
-            <input 
+            <input
               type="number"
               value={lowStockThreshold}
               onChange={(e) => setLowStockThreshold(parseInt(e.target.value) || 0)}
@@ -654,7 +654,7 @@ function InventoryView({ products, onRefresh, lowStockThreshold, setLowStockThre
           <div className="truncate">CATEGORÍA</div>
           <div className="text-right truncate">STOCK</div>
           <div className="text-right flex items-center justify-end gap-2 truncate">
-            COSTO 
+            COSTO
             <button onClick={() => setShowCosts(!showCosts)} className="text-gray-400 hover:text-[var(--primary)] flex-shrink-0">
               {showCosts ? <EyeOff size={12} /> : <Eye size={12} />}
             </button>
@@ -694,7 +694,7 @@ function InventoryView({ products, onRefresh, lowStockThreshold, setLowStockThre
                   )}
                 </div>
                 <div className="flex justify-center">
-                  <button 
+                  <button
                     onClick={() => handleEditClick(p)}
                     className="p-2 text-gray-400 hover:text-[var(--primary)] hover:bg-blue-50 rounded-lg transition-all"
                     title="Editar Producto"
@@ -709,37 +709,37 @@ function InventoryView({ products, onRefresh, lowStockThreshold, setLowStockThre
       </div>
 
       {isImportModalOpen && (
-        <ImportModal 
-          onClose={() => setIsImportModalOpen(false)} 
+        <ImportModal
+          onClose={() => setIsImportModalOpen(false)}
           onSuccess={() => {
             setIsImportModalOpen(false);
             onRefresh();
-          }} 
+          }}
         />
       )}
 
       {showPinModal && (
-        <PinModal 
-          onSuccess={() => handlePinSuccess(showPinModal)} 
-          onClose={() => setShowPinModal(null)} 
+        <PinModal
+          onSuccess={() => handlePinSuccess(showPinModal)}
+          onClose={() => setShowPinModal(null)}
         />
       )}
 
       {editingProduct && (
-        <EditProductModal 
-          product={editingProduct} 
-          onClose={() => setEditingProduct(null)} 
+        <EditProductModal
+          product={editingProduct}
+          onClose={() => setEditingProduct(null)}
           onSuccess={() => {
             setEditingProduct(null);
             onRefresh();
-          }} 
+          }}
         />
       )}
     </div>
   );
 }
 
-function AnalyticsView({ analytics, startDate, setStartDate, endDate, setEndDate }: { 
+function AnalyticsView({ analytics, startDate, setStartDate, endDate, setEndDate }: {
   analytics: Analytics | null;
   startDate: string;
   setStartDate: (d: string) => void;
@@ -760,8 +760,8 @@ function AnalyticsView({ analytics, startDate, setStartDate, endDate, setEndDate
         <div className="flex gap-4 items-center bg-white p-3 rounded-xl border border-[var(--line)] shadow-sm">
           <div className="flex flex-col">
             <label className="text-[10px] font-bold uppercase text-gray-400 mb-1">Desde</label>
-            <input 
-              type="date" 
+            <input
+              type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
               className="text-xs font-semibold focus:outline-none"
@@ -770,8 +770,8 @@ function AnalyticsView({ analytics, startDate, setStartDate, endDate, setEndDate
           <div className="w-px h-8 bg-[var(--line)]" />
           <div className="flex flex-col">
             <label className="text-[10px] font-bold uppercase text-gray-400 mb-1">Hasta</label>
-            <input 
-              type="date" 
+            <input
+              type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
               className="text-xs font-semibold focus:outline-none"
@@ -795,7 +795,7 @@ function AnalyticsView({ analytics, startDate, setStartDate, endDate, setEndDate
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
                 <XAxis dataKey="name" fontSize={10} tick={{ fill: '#6B7280' }} axisLine={false} tickLine={false} />
                 <YAxis fontSize={10} tick={{ fill: '#6B7280' }} axisLine={false} tickLine={false} />
-                <Tooltip 
+                <Tooltip
                   contentStyle={{ backgroundColor: '#fff', border: '1px solid #E5E7EB', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                   itemStyle={{ color: '#111827', fontSize: '12px', fontWeight: '600' }}
                 />
@@ -827,7 +827,7 @@ function AnalyticsView({ analytics, startDate, setStartDate, endDate, setEndDate
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip 
+                <Tooltip
                   contentStyle={{ backgroundColor: '#fff', border: '1px solid #E5E7EB', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                 />
               </PieChart>
@@ -844,7 +844,7 @@ function AnalyticsView({ analytics, startDate, setStartDate, endDate, setEndDate
               <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
               <XAxis type="number" fontSize={10} tick={{ fill: '#6B7280' }} axisLine={false} tickLine={false} />
               <YAxis dataKey="type" type="category" fontSize={10} tick={{ fill: '#6B7280' }} axisLine={false} tickLine={false} width={100} />
-              <Tooltip 
+              <Tooltip
                 contentStyle={{ backgroundColor: '#fff', border: '1px solid #E5E7EB', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                 itemStyle={{ color: '#111827', fontSize: '12px', fontWeight: '600' }}
               />
@@ -900,8 +900,8 @@ function PinModal({ onSuccess, onClose }: any) {
         <form onSubmit={handleSubmit} className="p-8 space-y-6">
           <div className="text-center">
             <p className="text-xs text-gray-500 mb-4">Ingrese PIN de 4 dígitos para editar</p>
-            <input 
-              type="password" 
+            <input
+              type="password"
               value={pin}
               onChange={e => setPin(e.target.value)}
               maxLength={4}
@@ -909,7 +909,7 @@ function PinModal({ onSuccess, onClose }: any) {
               className="w-32 text-center text-3xl tracking-[0.5em] font-bold border-b-2 border-[var(--primary)] focus:outline-none"
             />
           </div>
-          <button 
+          <button
             type="submit"
             className="w-full bg-[var(--primary)] text-white py-3 rounded-xl font-bold uppercase text-xs hover:bg-[var(--primary-dark)] transition-all"
           >
@@ -926,7 +926,8 @@ function EditProductModal({ product, onClose, onSuccess }: any) {
     name: product.name,
     type: product.type,
     sale_price: product.sale_price.toString(),
-    cost: product.cost?.toString() || '0'
+    cost: product.cost?.toString() || '0',
+    total_stock: product.total_stock?.toString() || '0'
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -937,7 +938,8 @@ function EditProductModal({ product, onClose, onSuccess }: any) {
       body: JSON.stringify({
         ...formData,
         sale_price: parseFloat(formData.sale_price),
-        cost: parseFloat(formData.cost)
+        cost: parseFloat(formData.cost),
+        new_stock: formData.total_stock
       })
     });
 
@@ -956,7 +958,7 @@ function EditProductModal({ product, onClose, onSuccess }: any) {
           <h3 className="font-bold uppercase tracking-widest text-sm">Editar Producto</h3>
           <button onClick={onClose}><X size={18} /></button>
         </div>
-        
+
         <form onSubmit={handleSubmit} className="p-8 space-y-6">
           <div>
             <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">ID / Barcode</label>
@@ -966,54 +968,64 @@ function EditProductModal({ product, onClose, onSuccess }: any) {
           <div className="space-y-4">
             <div>
               <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Nombre Producto</label>
-              <input 
-                type="text" 
+              <input
+                type="text"
                 required
                 value={formData.name}
-                onChange={e => setFormData({...formData, name: e.target.value.toUpperCase()})}
+                onChange={e => setFormData({ ...formData, name: e.target.value.toUpperCase() })}
                 className="w-full bg-white border border-[var(--line)] p-2 text-sm rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20"
               />
             </div>
             <div>
               <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Tipo / Categoría</label>
-              <input 
-                type="text" 
+              <input
+                type="text"
                 required
                 value={formData.type}
-                onChange={e => setFormData({...formData, type: e.target.value.toUpperCase()})}
+                onChange={e => setFormData({ ...formData, type: e.target.value.toUpperCase() })}
                 className="w-full bg-white border border-[var(--line)] p-2 text-sm rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20"
               />
             </div>
             <div>
               <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Precio Venta</label>
-              <input 
-                type="number" 
+              <input
+                type="number"
                 required
                 value={formData.sale_price}
-                onChange={e => setFormData({...formData, sale_price: e.target.value})}
+                onChange={e => setFormData({ ...formData, sale_price: e.target.value })}
                 className="w-full bg-white border border-[var(--line)] p-2 text-sm font-bold rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20"
               />
             </div>
             <div>
               <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Costo Unitario</label>
-              <input 
-                type="number" 
+              <input
+                type="number"
                 required
                 value={formData.cost}
-                onChange={e => setFormData({...formData, cost: e.target.value})}
+                onChange={e => setFormData({ ...formData, cost: e.target.value })}
+                className="w-full bg-white border border-[var(--line)] p-2 text-sm font-bold rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Stock Actual (Lotes combinados)</label>
+              <input
+                type="number"
+                required
+                value={formData.total_stock}
+                onChange={e => setFormData({ ...formData, total_stock: e.target.value })}
                 className="w-full bg-white border border-[var(--line)] p-2 text-sm font-bold rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20"
               />
             </div>
           </div>
 
           <div className="pt-4 flex gap-4">
-            <button 
+            <button
               type="submit"
               className="flex-1 bg-[var(--primary)] text-white py-3 rounded-xl font-bold uppercase text-xs hover:bg-[var(--primary-dark)] shadow-lg shadow-blue-100 transition-all"
             >
               Guardar Cambios
             </button>
-            <button 
+            <button
               type="button"
               onClick={onClose}
               className="px-6 border border-[var(--line)] py-3 rounded-xl font-bold uppercase text-xs hover:bg-gray-50 transition-colors"
@@ -1098,12 +1110,12 @@ function ImportModal({ onClose, onSuccess }: any) {
           </h3>
           <button onClick={onClose}><X size={18} /></button>
         </div>
-        
+
         <div className="p-8 space-y-6">
           <div className="p-6 bg-blue-50 border border-blue-100 rounded-xl">
             <h4 className="font-bold text-blue-900 text-xs uppercase mb-2">Paso 1: Descargar Formato</h4>
             <p className="text-xs text-blue-700 mb-4">Descargue la plantilla de Excel para completar los datos de sus productos correctamente.</p>
-            <button 
+            <button
               onClick={downloadFormat}
               className="w-full flex items-center justify-center gap-2 bg-white border border-blue-200 text-blue-700 py-3 rounded-lg font-bold uppercase text-[10px] hover:bg-blue-100 transition-all"
             >
@@ -1114,17 +1126,17 @@ function ImportModal({ onClose, onSuccess }: any) {
           <div className="p-6 bg-gray-50 border border-gray-100 rounded-xl">
             <h4 className="font-bold text-gray-900 text-xs uppercase mb-2">Paso 2: Cargar Archivo</h4>
             <p className="text-xs text-gray-600 mb-4">Una vez completada la plantilla, súbala aquí para actualizar el inventario.</p>
-            <button 
+            <button
               onClick={() => fileInputRef.current?.click()}
               className="w-full flex items-center justify-center gap-2 bg-[var(--primary)] text-white py-3 rounded-lg font-bold uppercase text-[10px] hover:opacity-90 transition-all"
             >
               <Upload size={16} /> Seleccionar Archivo
             </button>
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              onChange={handleFileChange} 
-              className="hidden" 
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              className="hidden"
               accept=".xlsx, .xls"
             />
           </div>
@@ -1172,14 +1184,14 @@ function ExpressModal({ initialId, onClose, onSuccess }: any) {
           <h3 className="font-bold uppercase tracking-widest text-sm">Creación Express</h3>
           <button onClick={onClose} className="hover:rotate-90 transition-transform"><X size={18} /></button>
         </div>
-        
+
         <form onSubmit={handleSubmit} className="p-8 space-y-6">
           <div>
             <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Código Detectado</label>
-            <input 
-              type="text" 
-              value={formData.id} 
-              readOnly 
+            <input
+              type="text"
+              value={formData.id}
+              readOnly
               className="w-full bg-gray-50 border border-[var(--line)] p-2 font-mono text-sm text-gray-500 rounded-lg"
             />
           </div>
@@ -1187,66 +1199,66 @@ function ExpressModal({ initialId, onClose, onSuccess }: any) {
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
               <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Nombre Producto *</label>
-              <input 
-                type="text" 
+              <input
+                type="text"
                 required
                 autoFocus
                 placeholder="Ej: COCA COLA ORIGINAL 2.5L"
                 value={formData.name}
-                onChange={e => setFormData({...formData, name: e.target.value.toUpperCase()})}
+                onChange={e => setFormData({ ...formData, name: e.target.value.toUpperCase() })}
                 className="w-full bg-white border border-[var(--line)] p-2 text-sm rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20"
               />
               <p className="text-[9px] text-gray-400 mt-1 italic">Sugerencia: Nombre Marca Variedad Gramaje</p>
             </div>
             <div>
               <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Tipo / Categoría *</label>
-              <input 
-                type="text" 
+              <input
+                type="text"
                 required
                 value={formData.type}
-                onChange={e => setFormData({...formData, type: e.target.value.toUpperCase()})}
+                onChange={e => setFormData({ ...formData, type: e.target.value.toUpperCase() })}
                 className="w-full bg-white border border-[var(--line)] p-2 text-sm rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20"
               />
             </div>
             <div>
               <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Precio Venta *</label>
-              <input 
-                type="number" 
+              <input
+                type="number"
                 required
                 value={formData.sale_price}
-                onChange={e => setFormData({...formData, sale_price: e.target.value})}
+                onChange={e => setFormData({ ...formData, sale_price: e.target.value })}
                 className="w-full bg-white border border-[var(--line)] p-2 text-sm font-bold rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20"
               />
             </div>
             <div>
               <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Stock Inicial *</label>
-              <input 
-                type="number" 
+              <input
+                type="number"
                 required
                 value={formData.initial_stock}
-                onChange={e => setFormData({...formData, initial_stock: e.target.value})}
+                onChange={e => setFormData({ ...formData, initial_stock: e.target.value })}
                 className="w-full bg-white border border-[var(--line)] p-2 text-sm font-bold rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20"
               />
             </div>
             <div>
               <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Costo (Opcional)</label>
-              <input 
-                type="number" 
+              <input
+                type="number"
                 value={formData.cost}
-                onChange={e => setFormData({...formData, cost: e.target.value})}
+                onChange={e => setFormData({ ...formData, cost: e.target.value })}
                 className="w-full bg-white border border-[var(--line)] p-2 text-sm font-bold rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20"
               />
             </div>
           </div>
 
           <div className="pt-4 flex gap-4">
-            <button 
+            <button
               type="submit"
               className="flex-1 bg-[var(--primary)] text-white py-3 rounded-xl font-bold uppercase text-xs hover:bg-[var(--primary-dark)] shadow-lg shadow-blue-100 transition-all"
             >
               Confirmar y Vender [ENTER]
             </button>
-            <button 
+            <button
               type="button"
               onClick={onClose}
               className="px-6 border border-[var(--line)] py-3 rounded-xl font-bold uppercase text-xs hover:bg-gray-50 transition-colors"

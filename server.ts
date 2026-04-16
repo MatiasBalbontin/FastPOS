@@ -113,6 +113,31 @@ async function startServer() {
             WHERE product_id = ? AND quantity > 0
           `).run(cost, id);
         }
+
+        if (req.body.new_stock !== undefined) {
+          const new_stock = parseInt(req.body.new_stock, 10);
+          const currentStockRow = db.prepare('SELECT COALESCE(SUM(quantity), 0) as total FROM batches WHERE product_id = ?').get(id) as any;
+          const currentStock = currentStockRow.total;
+          const diff = new_stock - currentStock;
+
+          if (diff > 0) {
+            // Incrementar stock: crear nuevo lote
+            db.prepare(`
+              INSERT INTO batches (product_id, quantity, initial_quantity, cost)
+              VALUES (?, ?, ?, ?)
+            `).run(id, diff, diff, cost !== undefined ? cost : 0);
+          } else if (diff < 0) {
+            // Reducir stock: descontar de lotes más antiguos (FIFO)
+            let remainingToRemove = -diff;
+            const batches = db.prepare(`SELECT * FROM batches WHERE product_id = ? AND quantity > 0 ORDER BY created_at ASC`).all(id) as any[];
+            for (const batch of batches) {
+              if (remainingToRemove <= 0) break;
+              const removeAmt = Math.min(batch.quantity, remainingToRemove);
+              db.prepare('UPDATE batches SET quantity = quantity - ? WHERE id = ?').run(removeAmt, batch.id);
+              remainingToRemove -= removeAmt;
+            }
+          }
+        }
       });
       
       transaction();
