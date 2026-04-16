@@ -925,7 +925,8 @@ function EditProductModal({ product, onClose, onSuccess }: any) {
   const [formData, setFormData] = useState({
     name: product.name,
     type: product.type,
-    sale_price: product.sale_price.toString()
+    sale_price: product.sale_price.toString(),
+    cost: product.cost?.toString() || '0'
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -935,7 +936,8 @@ function EditProductModal({ product, onClose, onSuccess }: any) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...formData,
-        sale_price: parseFloat(formData.sale_price)
+        sale_price: parseFloat(formData.sale_price),
+        cost: parseFloat(formData.cost)
       })
     });
 
@@ -989,6 +991,16 @@ function EditProductModal({ product, onClose, onSuccess }: any) {
                 required
                 value={formData.sale_price}
                 onChange={e => setFormData({...formData, sale_price: e.target.value})}
+                className="w-full bg-white border border-[var(--line)] p-2 text-sm font-bold rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Costo Unitario</label>
+              <input 
+                type="number" 
+                required
+                value={formData.cost}
+                onChange={e => setFormData({...formData, cost: e.target.value})}
                 className="w-full bg-white border border-[var(--line)] p-2 text-sm font-bold rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20"
               />
             </div>

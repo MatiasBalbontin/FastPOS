@@ -7,7 +7,13 @@ echo.
 cd /d "%~dp0"
 
 echo [1/3] Verificando dependencias...
-call npm install --no-fund --silent >nul 2>&1
+if not exist "node_modules\" (
+    echo Instalando dependencias de Node.js y Excel... ^(Se requiere internet^)
+    call npm install --no-fund
+    call npm install xlsx kill-port --save
+) else (
+    echo Dependencias locales encontradas. Listo para uso sin internet.
+)
 
 echo Limpiando puertos en uso para inicio limpio...
 call npx -y kill-port 3000 >nul 2>&1

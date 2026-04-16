@@ -95,15 +95,27 @@ async function startServer() {
 
   // Update Product Details
   app.put('/api/products/:id', (req, res) => {
-    const { name, type, sale_price } = req.body;
+    const { name, type, sale_price, cost } = req.body;
     const { id } = req.params;
 
     try {
-      db.prepare(`
-        UPDATE products 
-        SET name = ?, type = ?, sale_price = ?
-        WHERE id = ?
-      `).run(name.toUpperCase(), type.toUpperCase(), sale_price, id);
+      const transaction = db.transaction(() => {
+        db.prepare(`
+          UPDATE products 
+          SET name = ?, type = ?, sale_price = ?
+          WHERE id = ?
+        `).run(name.toUpperCase(), type.toUpperCase(), sale_price, id);
+
+        if (cost !== undefined) {
+          db.prepare(`
+            UPDATE batches
+            SET cost = ?
+            WHERE product_id = ? AND quantity > 0
+          `).run(cost, id);
+        }
+      });
+      
+      transaction();
       res.json({ success: true });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
