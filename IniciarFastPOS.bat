@@ -6,11 +6,27 @@ echo ==================================================
 echo.
 cd /d "%~dp0"
 
+:: 1. Verificando entorno Node.js
+where node >nul 2>&1
+if %ERRORLEVEL% NEQ 0 (
+    if not exist ".node\node.exe" (
+        echo [!] Descargando entorno Node.js portable silente ^(Por favor espera unos minutos...^)
+        if not exist ".node" mkdir ".node"
+        powershell -Command "$ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri 'https://nodejs.org/dist/v20.11.1/node-v20.11.1-win-x64.zip' -OutFile '.node\node.zip'"
+        echo [!] Extrayendo archivos...
+        powershell -Command "Expand-Archive -Path '.node\node.zip' -DestinationPath '.node' -Force"
+        xcopy /E /Y ".node\node-v20.11.1-win-x64\*" ".node\" >nul
+        rmdir /s /q ".node\node-v20.11.1-win-x64"
+        del ".node\node.zip"
+    )
+    :: Agregando el node local al PATH de esta sesión de CMD temporalmente
+    set "PATH=%~dp0.node;%PATH%"
+)
+
 echo [1/3] Verificando dependencias...
 if not exist "node_modules\" (
-    echo Instalando dependencias de Node.js y Excel... ^(Se requiere internet^)
+    echo Instalando dependencias del sistema... ^(Se requiere internet solo la primera vez^)
     call npm install --no-fund
-    call npm install xlsx kill-port --save
 ) else (
     echo Dependencias locales encontradas. Listo para uso sin internet.
 )

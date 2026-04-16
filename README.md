@@ -9,18 +9,20 @@ Este proyecto es un sistema de Punto de Venta (POS) rápido y eficiente, prepara
 
 ## Instalación y Ejecución
 
-**Requisitos previos:** Debes tener instalado [Node.js](https://nodejs.org/) (recomendado la versión LTS).
+**Requisitos previos (Mac/Linux):** Debes tener instalado [Node.js](https://nodejs.org/) (recomendado la versión LTS). **¡En Windows ya no es necesario instalarlo manualmente!**
 
-### Opción 1: Scripts de Acceso Rápido (Recomendado para Windows)
+### Opción 1: Instalación de 1 Clic (Recomendado para Windows)
 
-1. Clona o descarga este repositorio e instala las dependencias:
+1. Clona o descarga este repositorio y entra a la carpeta:
    ```bash
-   git clone https://github.com/MatiasBalbontin/FastPOS
+   git clone https://github.com/MatiasBalbontin/FastPOS.git
    cd fastpos
-   npm install
    ```
-2. Haz doble clic en el script `CrearAccesoDirecto.vbs`.
-   Esto automáticamente creará un acceso directo en tu Escritorio, que arrancará la aplicación y abrirá tu navegador. ¡Es todo!
+2. Simplemente haz doble clic en el archivo **`CrearAccesoDirecto.vbs`**.
+   *¿Qué hará esto?* 
+   - Detectará automáticamente si tienes NodeJS. Si no lo tienes, **descargará e instalará uno portátil y silencioso** dentro de la carpeta.
+   - Instalará todas las dependencias del sistema.
+   - Creará un acceso directo permanente en tu Escritorio para uso diario.
 
 ### Opción 2: Ejecución Manual en Terminal / Otro Sistema Operativo
 
