@@ -975,20 +975,20 @@ function EditProductModal({ product, onClose, onSuccess }: any) {
 
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
-      <div className="bg-white border border-[var(--line)] w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
-        <div className="p-6 border-b border-[var(--line)] flex justify-between items-center bg-[var(--primary)] text-white">
+      <div className="bg-white border border-[var(--line)] w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh]">
+        <div className="p-6 border-b border-[var(--line)] flex justify-between items-center bg-[var(--primary)] text-white shrink-0">
           <h3 className="font-bold uppercase tracking-widest text-sm">Editar Producto</h3>
           <button onClick={onClose}><X size={18} /></button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-8 space-y-6">
+        <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto">
           <div>
             <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">ID / Barcode</label>
             <input type="text" value={product.id} readOnly className="w-full bg-gray-50 border border-[var(--line)] p-2 font-mono text-sm text-gray-500 rounded-lg" />
           </div>
 
-          <div className="space-y-4">
-            <div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-2">
               <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Nombre Producto</label>
               <input
                 type="text"
@@ -998,7 +998,7 @@ function EditProductModal({ product, onClose, onSuccess }: any) {
                 className="w-full bg-white border border-[var(--line)] p-2 text-sm rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20"
               />
             </div>
-            <div>
+            <div className="col-span-2">
               <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Tipo / Categoría</label>
               <input
                 type="text"
@@ -1028,7 +1028,7 @@ function EditProductModal({ product, onClose, onSuccess }: any) {
                 className="w-full bg-white border border-[var(--line)] p-2 text-sm font-bold rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20"
               />
             </div>
-            <div>
+            <div className="col-span-2">
               <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Stock Actual (Lotes combinados)</label>
               <input
                 type="number"
@@ -1040,18 +1040,18 @@ function EditProductModal({ product, onClose, onSuccess }: any) {
             </div>
           </div>
 
-          <div className="pt-4 flex flex-col gap-4">
-            <div className="flex gap-4">
+          <div className="pt-2 flex flex-col gap-3">
+            <div className="flex gap-3">
               <button
                 type="submit"
-                className="flex-1 bg-[var(--primary)] text-white py-3 rounded-xl font-bold uppercase text-xs hover:bg-[var(--primary-dark)] shadow-lg shadow-blue-100 transition-all"
+                className="flex-1 bg-[var(--primary)] text-white py-2.5 rounded-xl font-bold uppercase text-xs hover:bg-[var(--primary-dark)] shadow-md transition-all"
               >
-                Guardar Cambios
+                Guardar
               </button>
               <button
                 type="button"
                 onClick={onClose}
-                className="px-6 border border-[var(--line)] py-3 rounded-xl font-bold uppercase text-xs hover:bg-gray-50 transition-colors"
+                className="px-6 border border-[var(--line)] py-2.5 rounded-xl font-bold uppercase text-xs hover:bg-gray-50 transition-colors"
               >
                 Cancelar
               </button>
@@ -1059,9 +1059,9 @@ function EditProductModal({ product, onClose, onSuccess }: any) {
             <button
               type="button"
               onClick={handleDelete}
-              className="w-full flex items-center justify-center gap-2 text-red-500 border border-red-200 py-3 rounded-xl font-bold uppercase text-xs hover:bg-red-50 transition-colors bg-white mt-2"
+              className="w-full flex items-center justify-center gap-2 text-red-500 border border-red-200 py-2.5 rounded-xl font-bold uppercase text-xs hover:bg-red-50 transition-colors bg-white mt-1"
             >
-              <Trash2 size={16} /> Eliminar Producto Permanentemente
+              <Trash2 size={16} /> Eliminar Producto
             </button>
           </div>
         </form>
