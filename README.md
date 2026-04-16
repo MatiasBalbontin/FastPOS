@@ -15,7 +15,7 @@ Este proyecto es un sistema de Punto de Venta (POS) rápido y eficiente, prepara
 
 1. Clona o descarga este repositorio e instala las dependencias:
    ```bash
-   git clone <URL_DEL_REPOSITORIO>
+   git clone https://github.com/MatiasBalbontin/FastPOS
    cd fastpos
    npm install
    ```
@@ -26,7 +26,7 @@ Este proyecto es un sistema de Punto de Venta (POS) rápido y eficiente, prepara
 
 1. Clonar este proyecto en tu dispositivo:
    ```bash
-   git clone <URL_DEL_REPOSITORIO>
+   git clone (https://github.com/MatiasBalbontin/FastPOS)
    cd fastpos
    ```
 2. Instalar las dependencias de Node.js:
