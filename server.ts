@@ -222,11 +222,6 @@ async function startServer() {
 
         let remainingToSell = quantity;
         let totalCost = 0;
-        const totalAvailable = batches.reduce((acc, b) => acc + b.quantity, 0);
-
-        if (totalAvailable < quantity) {
-          throw new Error('Insufficient stock');
-        }
 
         for (const batch of batches) {
           if (remainingToSell <= 0) break;
@@ -238,6 +233,15 @@ async function startServer() {
             .run(sellFromThisBatch, batch.id);
 
           remainingToSell -= sellFromThisBatch;
+        }
+
+        if (remainingToSell > 0) {
+          const lastBatch = db.prepare('SELECT cost FROM batches WHERE product_id = ? ORDER BY created_at DESC LIMIT 1').get(product_id) as any;
+          const fallbackCost = lastBatch ? lastBatch.cost : 0;
+          totalCost += remainingToSell * fallbackCost;
+          
+          db.prepare('INSERT INTO batches (product_id, quantity, initial_quantity, cost) VALUES (?, ?, ?, ?)')
+            .run(product_id, -remainingToSell, -remainingToSell, fallbackCost);
         }
 
         db.prepare(`
@@ -274,14 +278,8 @@ async function startServer() {
             WHERE product_id = ? AND quantity > 0 
             ORDER BY created_at ASC
           `).all(product_id) as any[];
-
           let remainingToSell = quantity;
           let totalCost = 0;
-          const totalAvailable = batches.reduce((acc, b) => acc + b.quantity, 0);
-
-          if (totalAvailable < quantity) {
-            throw new Error(`Insufficient stock for ${product_id}`);
-          }
 
           for (const batch of batches) {
             if (remainingToSell <= 0) break;
@@ -293,6 +291,15 @@ async function startServer() {
               .run(sellFromThisBatch, batch.id);
 
             remainingToSell -= sellFromThisBatch;
+          }
+
+          if (remainingToSell > 0) {
+            const lastBatch = db.prepare('SELECT cost FROM batches WHERE product_id = ? ORDER BY created_at DESC LIMIT 1').get(product_id) as any;
+            const fallbackCost = lastBatch ? lastBatch.cost : 0;
+            totalCost += remainingToSell * fallbackCost;
+            
+            db.prepare('INSERT INTO batches (product_id, quantity, initial_quantity, cost) VALUES (?, ?, ?, ?)')
+              .run(product_id, -remainingToSell, -remainingToSell, fallbackCost);
           }
 
           db.prepare(`
