@@ -23,7 +23,8 @@ import {
   Lock,
   FileSpreadsheet,
   FileUp,
-  FileMinus
+  FileMinus,
+  Receipt
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import {
@@ -53,10 +54,15 @@ interface Product {
 }
 
 interface Analytics {
-  topProducts: { name: string; total_sold: number }[];
-  categoryAnalysis: { type: string; total_sold: number }[];
-  summary: { total_revenue: number; total_cost: number; total_profit: number; cash_revenue: number; card_revenue: number; };
-  inventoryByFamily: { type: string; total_stock: number }[];
+  topProducts: { name: string; volume: number; revenue: number }[];
+  categoryAnalysis: { type: string; volume: number; revenue: number }[];
+  summary: { 
+    total_revenue: number; total_cost: number; total_profit: number; 
+    cash_revenue: number; card_revenue: number;
+    total_expenses: number; cash_expenses: number; card_expenses: number;
+    total_inventory_value: number;
+  };
+  inventoryByFamily: { type: string; total_stock: number; total_value: number }[];
 }
 
 // --- Components ---
@@ -77,7 +83,7 @@ const SidebarItem = ({ icon: Icon, label, active, onClick }: any) => (
 );
 
 export default function App() {
-  const [view, setView] = useState<'sales' | 'inventory' | 'analytics' | 'credit_notes'>('sales');
+  const [view, setView] = useState<'sales' | 'inventory' | 'analytics' | 'credit_notes' | 'expenses'>('sales');
   const [products, setProducts] = useState<Product[]>([]);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [startDate, setStartDate] = useState(new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0]);
@@ -178,6 +184,12 @@ export default function App() {
             active={view === 'credit_notes'}
             onClick={() => setView('credit_notes')}
           />
+          <SidebarItem
+            icon={Receipt}
+            label="Gastos de Caja"
+            active={view === 'expenses'}
+            onClick={() => setView('expenses')}
+          />
         </nav>
 
         <div className="p-4 border-t border-[var(--line)] space-y-2">
@@ -230,6 +242,13 @@ export default function App() {
           <CreditNotesView 
             onRefresh={() => {
               fetchProducts();
+              fetchAnalytics();
+            }}
+          />
+        )}
+        {view === 'expenses' && (
+          <ExpensesView 
+            onRefresh={() => {
               fetchAnalytics();
             }}
           />
@@ -767,6 +786,8 @@ function AnalyticsView({ analytics, startDate, setStartDate, endDate, setEndDate
   endDate: string;
   setEndDate: (d: string) => void;
 }) {
+  const [metric, setMetric] = useState<'monto' | 'cantidad'>('monto');
+
   if (!analytics) return null;
 
   const COLORS = ['#005EB8', '#FFC785', '#10B981', '#F59E0B', '#6366F1'];
@@ -778,67 +799,98 @@ function AnalyticsView({ analytics, startDate, setStartDate, endDate, setEndDate
           <h2 className="text-3xl font-bold tracking-tight text-[var(--ink)]">Reportes y Análisis</h2>
           <p className="text-sm text-gray-500 mt-1">Visualización de rendimiento y rentabilidad.</p>
         </div>
-        <div className="flex gap-4 items-center bg-white p-3 rounded-xl border border-[var(--line)] shadow-sm">
+        <div className="flex gap-4 items-center">
           <div className="flex flex-col">
-            <label className="text-[10px] font-bold uppercase text-gray-400 mb-1">Desde</label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="text-xs font-semibold focus:outline-none"
-            />
+            <label className="text-[10px] font-bold uppercase text-[var(--primary)] mb-1">Visualizar Gráficos por</label>
+            <select
+              value={metric}
+              onChange={(e) => setMetric(e.target.value as any)}
+              className="bg-white border border-[var(--primary)] text-[var(--primary)] font-bold text-xs p-2 rounded-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all hover:bg-blue-50"
+            >
+              <option value="monto">Monto ($)</option>
+              <option value="cantidad">Cantidad Unit. (#)</option>
+            </select>
           </div>
-          <div className="w-px h-8 bg-[var(--line)]" />
-          <div className="flex flex-col">
-            <label className="text-[10px] font-bold uppercase text-gray-400 mb-1">Hasta</label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="text-xs font-semibold focus:outline-none"
-            />
+          
+          <div className="flex gap-4 items-center bg-white p-3 rounded-xl border border-[var(--line)] shadow-sm">
+            <div className="flex flex-col">
+              <label className="text-[10px] font-bold uppercase text-gray-400 mb-1">Desde</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="text-xs font-semibold focus:outline-none"
+              />
+            </div>
+            <div className="w-px h-8 bg-[var(--line)]" />
+            <div className="flex flex-col">
+              <label className="text-[10px] font-bold uppercase text-gray-400 mb-1">Hasta</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="text-xs font-semibold focus:outline-none"
+              />
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-8">
+      <div className="grid grid-cols-4 gap-8">
         <StatCard label="Ingresos Totales" value={`$${analytics.summary.total_revenue?.toLocaleString() || 0}`} />
         <StatCard label="Costo de Ventas" value={`$${analytics.summary.total_cost?.toLocaleString() || 0}`} />
         <StatCard label="Utilidad Real (FIFO)" value={`$${analytics.summary.total_profit?.toLocaleString() || 0}`} trend />
+        <StatCard label="Valor Total Inventario" value={`$${analytics.summary.total_inventory_value?.toLocaleString() || 0}`} />
       </div>
 
       <div className="grid grid-cols-2 gap-8">
         <div className="p-6 border border-[var(--line)] bg-white rounded-2xl shadow-sm flex items-center justify-between border-l-4 border-l-green-500">
           <div>
-            <div className="text-[10px] font-bold uppercase text-gray-500 tracking-widest mb-1">Pagos en Efectivo</div>
-            <div className="text-3xl font-mono font-bold text-green-700">${analytics.summary.cash_revenue?.toLocaleString() || 0}</div>
+            <div className="text-[10px] font-bold uppercase text-gray-500 tracking-widest mb-1">Caja Efectivo (Neto)</div>
+            <div className="text-3xl font-mono font-bold text-green-700">${((analytics.summary.cash_revenue || 0) - (analytics.summary.cash_expenses || 0)).toLocaleString()}</div>
           </div>
           <Banknote size={32} className="opacity-20 text-green-700" />
         </div>
         <div className="p-6 border border-[var(--line)] bg-white rounded-2xl shadow-sm flex items-center justify-between border-l-4 border-l-blue-500">
           <div>
-            <div className="text-[10px] font-bold uppercase text-gray-500 tracking-widest mb-1">Pagos con Tarjeta</div>
-            <div className="text-3xl font-mono font-bold text-blue-700">${analytics.summary.card_revenue?.toLocaleString() || 0}</div>
+            <div className="text-[10px] font-bold uppercase text-gray-500 tracking-widest mb-1">Pagos con Tarjeta (Neto)</div>
+            <div className="text-3xl font-mono font-bold text-blue-700">${((analytics.summary.card_revenue || 0) - (analytics.summary.card_expenses || 0)).toLocaleString()}</div>
           </div>
           <CreditCard size={32} className="opacity-20 text-blue-700" />
         </div>
+        
+        {analytics.summary.total_expenses > 0 && (
+          <div className="col-span-2 p-6 border border-[var(--line)] bg-red-50 rounded-2xl shadow-sm flex items-center justify-between border-l-4 border-l-red-500 mt-[-16px]">
+            <div>
+              <div className="text-[10px] font-bold uppercase text-red-500 tracking-widest mb-1">Descuentos por Gastos Registrados</div>
+              <div className="text-2xl font-mono font-bold text-red-700">
+                Total Restado: ${analytics.summary.total_expenses?.toLocaleString()} 
+                <span className="text-sm ml-4 opacity-70">(Efectivo: ${analytics.summary.cash_expenses?.toLocaleString() || 0} | Tarjeta: ${analytics.summary.card_expenses?.toLocaleString() || 0})</span>
+              </div>
+            </div>
+            <Receipt size={32} className="opacity-20 text-red-700" />
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-8">
         <div className="p-8 border border-[var(--line)] bg-white rounded-2xl shadow-sm">
-          <h3 className="text-sm font-bold uppercase mb-8 text-gray-500 tracking-wider">Ranking de Salidas (Volumen)</h3>
+          <h3 className="text-sm font-bold uppercase mb-8 text-gray-500 tracking-wider">
+            Ranking de Salidas {metric === 'monto' ? '(Recaudación)' : '(Volumen)'}
+          </h3>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={analytics.topProducts}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
                 <XAxis dataKey="name" fontSize={10} tick={{ fill: '#6B7280' }} axisLine={false} tickLine={false} />
-                <YAxis fontSize={10} tick={{ fill: '#6B7280' }} axisLine={false} tickLine={false} />
+                <YAxis fontSize={10} tick={{ fill: '#6B7280' }} axisLine={false} tickLine={false} tickFormatter={(val) => metric === 'monto' ? `$${val.toLocaleString()}` : val.toLocaleString()} />
                 <Tooltip
+                  formatter={(value: number) => [metric === 'monto' ? `$${value.toLocaleString()}` : value.toLocaleString(), metric === 'monto' ? 'Recaudación' : 'Cantidad']}
                   contentStyle={{ backgroundColor: '#fff', border: '1px solid #E5E7EB', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                   itemStyle={{ color: '#111827', fontSize: '12px', fontWeight: '600' }}
                 />
-                <Bar dataKey="total_sold" fill="var(--primary)" radius={[4, 4, 0, 0]}>
-                  <LabelList dataKey="total_sold" position="top" style={{ fill: 'var(--primary)', fontSize: 10, fontWeight: 'bold' }} />
+                <Bar dataKey={metric === 'monto' ? 'revenue' : 'volume'} fill="var(--primary)" radius={[4, 4, 0, 0]}>
+                  <LabelList dataKey={metric === 'monto' ? 'revenue' : 'volume'} position="top" formatter={(val: number) => metric === 'monto' ? `$${val.toLocaleString()}` : val.toLocaleString()} style={{ fill: 'var(--primary)', fontSize: 10, fontWeight: 'bold' }} />
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -846,26 +898,29 @@ function AnalyticsView({ analytics, startDate, setStartDate, endDate, setEndDate
         </div>
 
         <div className="p-8 border border-[var(--line)] bg-white rounded-2xl shadow-sm">
-          <h3 className="text-sm font-bold uppercase mb-8 text-gray-500 tracking-wider">Dominio por Categoría</h3>
+          <h3 className="text-sm font-bold uppercase mb-8 text-gray-500 tracking-wider">
+            Dominio por Categoría {metric === 'monto' ? '(Recaudación)' : '(Volumen)'}
+          </h3>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
                   data={analytics.categoryAnalysis}
-                  dataKey="total_sold"
+                  dataKey={metric === 'monto' ? 'revenue' : 'volume'}
                   nameKey="type"
                   cx="50%"
                   cy="50%"
                   innerRadius={60}
                   outerRadius={100}
                   paddingAngle={5}
-                  label={({ type, total_sold }) => `${type}: ${total_sold}`}
+                  label={({ type, value }) => metric === 'monto' ? `${type}: $${value.toLocaleString()}` : `${type}: ${value.toLocaleString()}`}
                 >
                   {analytics.categoryAnalysis.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
                 <Tooltip
+                  formatter={(value: number) => [metric === 'monto' ? `$${value.toLocaleString()}` : value.toLocaleString(), metric === 'monto' ? 'Recaudación' : 'Cantidad']}
                   contentStyle={{ backgroundColor: '#fff', border: '1px solid #E5E7EB', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                 />
               </PieChart>
@@ -875,19 +930,22 @@ function AnalyticsView({ analytics, startDate, setStartDate, endDate, setEndDate
       </div>
 
       <div className="p-8 border border-[var(--line)] bg-white rounded-2xl shadow-sm">
-        <h3 className="text-sm font-bold uppercase mb-8 text-gray-500 tracking-wider">Inventario por Familia (Existencias)</h3>
+        <h3 className="text-sm font-bold uppercase mb-8 text-gray-500 tracking-wider">
+          Inventario por Familia {metric === 'monto' ? '(Valor Monetario)' : '(Existencias)'}
+        </h3>
         <div className="h-72">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={analytics.inventoryByFamily} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
-              <XAxis type="number" fontSize={10} tick={{ fill: '#6B7280' }} axisLine={false} tickLine={false} />
+              <XAxis type="number" fontSize={10} tick={{ fill: '#6B7280' }} axisLine={false} tickLine={false} tickFormatter={(val) => metric === 'monto' ? `$${val.toLocaleString()}` : val.toLocaleString()} />
               <YAxis dataKey="type" type="category" fontSize={10} tick={{ fill: '#6B7280' }} axisLine={false} tickLine={false} width={100} />
               <Tooltip
+                formatter={(value: number) => [metric === 'monto' ? `$${value.toLocaleString()}` : value.toLocaleString(), metric === 'monto' ? 'Valor Inventario' : 'Cantidad']}
                 contentStyle={{ backgroundColor: '#fff', border: '1px solid #E5E7EB', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                 itemStyle={{ color: '#111827', fontSize: '12px', fontWeight: '600' }}
               />
-              <Bar dataKey="total_stock" fill="#FFC785" radius={[0, 4, 4, 0]}>
-                <LabelList dataKey="total_stock" position="right" style={{ fill: '#111827', fontSize: 10, fontWeight: 'bold' }} />
+              <Bar dataKey={metric === 'monto' ? 'total_value' : 'total_stock'} fill="#FFC785" radius={[0, 4, 4, 0]}>
+                <LabelList dataKey={metric === 'monto' ? 'total_value' : 'total_stock'} position="right" formatter={(val: number) => metric === 'monto' ? `$${val.toLocaleString()}` : val.toLocaleString()} style={{ fill: '#111827', fontSize: 10, fontWeight: 'bold' }} />
               </Bar>
             </BarChart>
           </ResponsiveContainer>
@@ -1411,8 +1469,128 @@ function CreditNotesView({ onRefresh }: { onRefresh: () => void }) {
           </div>
         ))}
         {tickets.length === 0 && (
-          <div className="text-center py-12 text-gray-400 italic">No hay registros de ventas recientes.</div>
+          <div className="text-center py-12 text-gray-400 italic">
+            <p>No hay registros de ventas recientes.</p>
+            <p className="text-xs mt-2 opacity-60">Solo las ventas nuevas realizadas en el terminal aparecerán aquí para ser anuladas.</p>
+          </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function ExpensesView({ onRefresh }: { onRefresh: () => void }) {
+  const [expenses, setExpenses] = useState<any[]>([]);
+  const [formData, setFormData] = useState({ description: '', amount: '', method: 'cash' });
+
+  const fetchExpenses = async () => {
+    const res = await fetch('/api/expenses');
+    if (res.ok) {
+      setExpenses(await res.json());
+    }
+  };
+
+  useEffect(() => {
+    fetchExpenses();
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.description || !formData.amount) return;
+
+    const res = await fetch('/api/expenses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        description: formData.description,
+        amount: parseFloat(formData.amount),
+        method: formData.method
+      })
+    });
+
+    if (res.ok) {
+      toast.success("Gasto registrado");
+      setFormData({ description: '', amount: '', method: 'cash' });
+      fetchExpenses();
+      onRefresh();
+    } else {
+      const err = await res.json();
+      toast.error(err.error || "Error al registrar gasto");
+    }
+  };
+
+  return (
+    <div className="p-8 max-w-5xl mx-auto space-y-8">
+      <div>
+        <h2 className="text-3xl font-bold tracking-tight text-[var(--ink)]">Gastos de Caja</h2>
+        <p className="text-sm text-gray-500 mt-1">Registra egresos y notas de cargo que se descontarán del balance.</p>
+      </div>
+
+      <form onSubmit={handleSubmit} className="bg-white p-6 rounded-2xl border border-[var(--line)] shadow-sm flex flex-wrap gap-4 items-end">
+        <div className="flex-1 min-w-[200px]">
+          <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Glosa / Descripción</label>
+          <input
+            type="text"
+            required
+            value={formData.description}
+            onChange={e => setFormData({ ...formData, description: e.target.value })}
+            placeholder="Ej. Compra insumos, Pago luz..."
+            className="w-full bg-gray-50 border border-[var(--line)] p-3 text-sm focus:bg-white rounded-xl focus:outline-none focus:ring-2 ring-[var(--primary)]/20"
+          />
+        </div>
+        <div className="w-40">
+          <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Monto ($)</label>
+          <input
+            type="number"
+            required
+            min="1"
+            value={formData.amount}
+            onChange={e => setFormData({ ...formData, amount: e.target.value })}
+            className="w-full bg-gray-50 border border-[var(--line)] p-3 text-sm font-bold focus:bg-white rounded-xl focus:outline-none focus:ring-2 ring-[var(--primary)]/20"
+          />
+        </div>
+        <div className="w-48">
+          <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Medio Descontado</label>
+          <select
+            value={formData.method}
+            onChange={e => setFormData({ ...formData, method: e.target.value })}
+            className="w-full bg-gray-50 border border-[var(--line)] p-3 text-sm focus:bg-white rounded-xl focus:outline-none focus:ring-2 ring-[var(--primary)]/20 cursor-pointer"
+          >
+            <option value="cash">Caja Efectivo</option>
+            <option value="card">Tarjeta / Banco</option>
+          </select>
+        </div>
+        <button type="submit" className="bg-red-600 hover:bg-red-700 text-white font-bold uppercase tracking-wider text-xs px-6 py-3 rounded-xl transition-all h-[46px] shadow-lg shadow-red-200">
+          Descontar
+        </button>
+      </form>
+
+      <div className="border border-[var(--line)] bg-white rounded-2xl overflow-hidden shadow-sm">
+        <div className="grid grid-cols-[1fr_2fr_1fr_1fr] p-4 border-b border-[var(--line)] bg-gray-50/50 text-xs font-bold uppercase text-gray-500">
+          <div>Fecha</div>
+          <div>Glosa</div>
+          <div>Medio de Pago</div>
+          <div className="text-right">Monto</div>
+        </div>
+        <div className="divide-y divide-[var(--line)] max-h-96 overflow-auto">
+          {expenses.map((exp: any) => (
+            <div key={exp.id} className="grid grid-cols-[1fr_2fr_1fr_1fr] p-4 text-sm items-center hover:bg-gray-50/50 transition-colors">
+              <div className="text-gray-500 font-mono text-xs">{new Date(exp.created_at).toLocaleString()}</div>
+              <div className="font-bold">{exp.description}</div>
+              <div>
+                {exp.method === 'cash' ? (
+                  <span className="flex items-center gap-1 text-green-700 text-xs font-bold"><Banknote size={12}/> EFECTIVO</span>
+                ) : (
+                  <span className="flex items-center gap-1 text-blue-700 text-xs font-bold"><CreditCard size={12}/> TARJETA</span>
+                )}
+              </div>
+              <div className="text-right font-mono font-bold text-red-600">-${exp.amount.toLocaleString()}</div>
+            </div>
+          ))}
+          {expenses.length === 0 && (
+            <div className="p-8 text-center text-gray-400 italic text-sm">No hay gastos registrados.</div>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -47,6 +47,16 @@ if (!hasTicketId) {
   `);
 }
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS expenses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    description TEXT NOT NULL,
+    amount REAL NOT NULL,
+    method TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
 async function startServer() {
   const app = express();
   app.use(express.json());
@@ -375,6 +385,33 @@ async function startServer() {
     }
   });
 
+  // Get Expenses
+  app.get('/api/expenses', (req, res) => {
+    try {
+      const expenses = db.prepare('SELECT * FROM expenses ORDER BY created_at DESC LIMIT 100').all();
+      res.json(expenses);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Add Expense
+  app.post('/api/expenses', (req, res) => {
+    const { description, amount, method } = req.body;
+    try {
+      if (!description || !amount || !method) {
+        throw new Error('Todos los campos son requeridos');
+      }
+      db.prepare(`
+        INSERT INTO expenses (description, amount, method)
+        VALUES (?, ?, ?)
+      `).run(description.toUpperCase(), amount, method);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   // Analytics
   app.get('/api/analytics', (req, res) => {
     const { period = 'month', startDate, endDate } = req.query;
@@ -393,17 +430,17 @@ async function startServer() {
     }
 
     const topProducts = db.prepare(`
-      SELECT p.name, SUM(s.quantity) as total_sold
+      SELECT p.name, SUM(s.quantity) as volume, SUM(s.quantity * s.sale_price) as revenue
       FROM sales s
       JOIN products p ON s.product_id = p.id
       WHERE ${dateFilter} AND s.status != 'voided'
       GROUP BY s.product_id
-      ORDER BY total_sold DESC
+      ORDER BY revenue DESC
       LIMIT 10
     `).all(...params);
 
     const categoryAnalysis = db.prepare(`
-      SELECT p.type, SUM(s.quantity) as total_sold
+      SELECT p.type, SUM(s.quantity) as volume, SUM(s.quantity * s.sale_price) as revenue
       FROM sales s
       JOIN products p ON s.product_id = p.id
       WHERE ${dateFilter} AND s.status != 'voided'
@@ -421,15 +458,28 @@ async function startServer() {
       WHERE ${dateFilter} AND status != 'voided'
     `).get(...params) as any;
 
+    const expensesSummary = db.prepare(`
+      SELECT 
+        SUM(amount) as total_expenses,
+        SUM(CASE WHEN method = 'cash' THEN amount ELSE 0 END) as cash_expenses,
+        SUM(CASE WHEN method = 'card' THEN amount ELSE 0 END) as card_expenses
+      FROM expenses
+      WHERE ${dateFilter}
+    `).get(...params) as any;
+
     const inventoryByFamily = db.prepare(`
-      SELECT p.type, SUM(b.quantity) as total_stock
+      SELECT p.type, SUM(b.quantity) as total_stock, SUM(b.quantity * b.cost) as total_value
       FROM products p
       LEFT JOIN batches b ON p.id = b.product_id
       GROUP BY p.type
-      ORDER BY total_stock DESC
+      ORDER BY total_value DESC
     `).all();
 
-    res.json({ topProducts, categoryAnalysis, summary, inventoryByFamily });
+    const totalInventoryValue = db.prepare(`
+      SELECT SUM(quantity * cost) as value FROM batches WHERE quantity > 0
+    `).get() as any;
+
+    res.json({ topProducts, categoryAnalysis, summary: { ...summary, ...expensesSummary, total_inventory_value: totalInventoryValue.value || 0 }, inventoryByFamily });
   });
 
   // --- Vite Setup ---
