@@ -1,4 +1,4 @@
-# FastPOS Libre y Local
+# FastPOS
 
 Este proyecto es un sistema de Punto de Venta (POS) rápido y eficiente, preparado para usarse localmente de manera sencilla. Ahora es completamente de código abierto bajo la Licencia **GPLv3**.
 
@@ -9,7 +9,7 @@ Este proyecto es un sistema de Punto de Venta (POS) rápido y eficiente, prepara
 
 ## Instalación y Ejecución
 
-**Requisitos previos (Mac/Linux):** Debes tener instalado [Node.js](https://nodejs.org/) (recomendado la versión LTS). **¡En Windows ya no es necesario instalarlo manualmente!**
+**Requisitos previos (Mac/Linux):** Debes tener instalado [Node.js](https://nodejs.org/) (recomendado la versión LTS).
 
 ### Opción 1: Instalación de 1 Clic (Recomendado para Windows)
 

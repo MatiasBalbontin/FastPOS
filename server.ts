@@ -37,6 +37,16 @@ db.exec(`
   );
 `);
 
+const tableInfo = db.prepare("PRAGMA table_info(sales)").all() as any[];
+const hasTicketId = tableInfo.some(col => col.name === 'ticket_id');
+if (!hasTicketId) {
+  db.exec(`
+    ALTER TABLE sales ADD COLUMN ticket_id TEXT;
+    ALTER TABLE sales ADD COLUMN payment_method TEXT DEFAULT 'cash';
+    ALTER TABLE sales ADD COLUMN status TEXT DEFAULT 'completed';
+  `);
+}
+
 async function startServer() {
   const app = express();
   app.use(express.json());
@@ -62,7 +72,7 @@ async function startServer() {
   app.get('/api/products/:id', (req, res) => {
     const product = db.prepare('SELECT * FROM products WHERE id = ?').get(req.params.id) as any;
     if (!product) return res.status(404).json({ error: 'Product not found' });
-    
+
     const batches = db.prepare('SELECT * FROM batches WHERE product_id = ? AND quantity > 0 ORDER BY created_at ASC').all(req.params.id);
     res.json({ ...product, batches });
   });
@@ -70,7 +80,7 @@ async function startServer() {
   // Create or Update Product (Express Creation)
   app.post('/api/products', (req, res) => {
     const { id, name, type, sale_price, initial_stock, cost = 0 } = req.body;
-    
+
     const transaction = db.transaction(() => {
       db.prepare(`
         INSERT INTO products (id, name, type, sale_price)
@@ -139,7 +149,7 @@ async function startServer() {
           }
         }
       });
-      
+
       transaction();
       res.json({ success: true });
     } catch (error: any) {
@@ -150,7 +160,7 @@ async function startServer() {
   // Bulk Import
   app.post('/api/products/bulk', (req, res) => {
     const { products: importData } = req.body;
-    
+
     try {
       const transaction = db.transaction(() => {
         for (const item of importData) {
@@ -188,7 +198,7 @@ async function startServer() {
   // Register a Sale (FIFO Logic)
   app.post('/api/sales', (req, res) => {
     const { product_id, quantity } = req.body;
-    
+
     try {
       const transaction = db.transaction(() => {
         const product = db.prepare('SELECT sale_price FROM products WHERE id = ?').get(product_id) as any;
@@ -213,10 +223,10 @@ async function startServer() {
 
           const sellFromThisBatch = Math.min(batch.quantity, remainingToSell);
           totalCost += sellFromThisBatch * batch.cost;
-          
+
           db.prepare('UPDATE batches SET quantity = quantity - ? WHERE id = ?')
             .run(sellFromThisBatch, batch.id);
-          
+
           remainingToSell -= sellFromThisBatch;
         }
 
@@ -237,14 +247,15 @@ async function startServer() {
 
   // Register Bulk Sales (POS Transaction)
   app.post('/api/sales/bulk', (req, res) => {
-    const { items } = req.body; // Array of { product_id, quantity }
-    
+    const { items, method = 'cash' } = req.body; // Array of { product_id, quantity }, and method
+    const ticket_id = `TKT-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
     try {
       const transaction = db.transaction(() => {
         const results = [];
         for (const item of items) {
           const { product_id, quantity } = item;
-          
+
           const product = db.prepare('SELECT sale_price FROM products WHERE id = ?').get(product_id) as any;
           if (!product) throw new Error(`Product ${product_id} not found`);
 
@@ -267,18 +278,18 @@ async function startServer() {
 
             const sellFromThisBatch = Math.min(batch.quantity, remainingToSell);
             totalCost += sellFromThisBatch * batch.cost;
-            
+
             db.prepare('UPDATE batches SET quantity = quantity - ? WHERE id = ?')
               .run(sellFromThisBatch, batch.id);
-            
+
             remainingToSell -= sellFromThisBatch;
           }
 
           db.prepare(`
-            INSERT INTO sales (product_id, quantity, sale_price, total_cost)
-            VALUES (?, ?, ?, ?)
-          `).run(product_id, quantity, product.sale_price, totalCost);
-          
+            INSERT INTO sales (product_id, quantity, sale_price, total_cost, ticket_id, payment_method, status)
+            VALUES (?, ?, ?, ?, ?, ?, 'completed')
+          `).run(product_id, quantity, product.sale_price, totalCost, ticket_id, method);
+
           results.push({ product_id, totalCost, salePrice: product.sale_price });
         }
         return results;
@@ -291,10 +302,83 @@ async function startServer() {
     }
   });
 
+  // Get Sales History
+  app.get('/api/sales/history', (req, res) => {
+    try {
+      const tickets = db.prepare(`
+        SELECT 
+          s.ticket_id, 
+          s.payment_method,
+          s.status,
+          s.created_at,
+          SUM(s.quantity * s.sale_price) as total_amount,
+          json_group_array(json_object(
+            'product_id', s.product_id,
+            'name', p.name,
+            'quantity', s.quantity,
+            'sale_price', s.sale_price
+          )) as items
+        FROM sales s
+        JOIN products p ON s.product_id = p.id
+        WHERE s.ticket_id IS NOT NULL
+        GROUP BY s.ticket_id
+        ORDER BY s.created_at DESC
+        LIMIT 100
+      `).all() as any[];
+
+      // Parse JSON items
+      const formatted = tickets.map(t => ({
+        ...t,
+        items: JSON.parse(t.items)
+      }));
+
+      res.json(formatted);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // Void a Sale
+  app.post('/api/sales/void/:ticket_id', (req, res) => {
+    const { ticket_id } = req.params;
+    try {
+      const transaction = db.transaction(() => {
+        // Find the sales for this ticket that are not yet voided
+        const sales = db.prepare(`
+          SELECT * FROM sales WHERE ticket_id = ? AND status = 'completed'
+        `).all(ticket_id) as any[];
+
+        if (sales.length === 0) {
+          throw new Error('Ticket not found or already voided');
+        }
+
+        for (const sale of sales) {
+          // Restore inventory: calculate average cost and add back to batches
+          const avgCost = sale.total_cost / sale.quantity;
+
+          db.prepare(`
+            INSERT INTO batches (product_id, quantity, initial_quantity, cost)
+            VALUES (?, ?, ?, ?)
+          `).run(sale.product_id, sale.quantity, sale.quantity, avgCost);
+
+          // Mark as voided
+          db.prepare(`
+            UPDATE sales SET status = 'voided' WHERE id = ?
+          `).run(sale.id);
+        }
+      });
+
+      transaction();
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   // Analytics
   app.get('/api/analytics', (req, res) => {
     const { period = 'month', startDate, endDate } = req.query;
-    
+
     let dateFilter = "";
     let params: any[] = [];
 
@@ -312,7 +396,7 @@ async function startServer() {
       SELECT p.name, SUM(s.quantity) as total_sold
       FROM sales s
       JOIN products p ON s.product_id = p.id
-      WHERE ${dateFilter}
+      WHERE ${dateFilter} AND s.status != 'voided'
       GROUP BY s.product_id
       ORDER BY total_sold DESC
       LIMIT 10
@@ -322,7 +406,7 @@ async function startServer() {
       SELECT p.type, SUM(s.quantity) as total_sold
       FROM sales s
       JOIN products p ON s.product_id = p.id
-      WHERE ${dateFilter}
+      WHERE ${dateFilter} AND s.status != 'voided'
       GROUP BY p.type
     `).all(...params);
 
@@ -330,9 +414,11 @@ async function startServer() {
       SELECT 
         SUM(quantity * sale_price) as total_revenue,
         SUM(total_cost) as total_cost,
-        SUM(quantity * sale_price) - SUM(total_cost) as total_profit
+        SUM(quantity * sale_price) - SUM(total_cost) as total_profit,
+        SUM(CASE WHEN payment_method = 'cash' THEN quantity * sale_price ELSE 0 END) as cash_revenue,
+        SUM(CASE WHEN payment_method = 'card' THEN quantity * sale_price ELSE 0 END) as card_revenue
       FROM sales
-      WHERE ${dateFilter}
+      WHERE ${dateFilter} AND status != 'voided'
     `).get(...params) as any;
 
     const inventoryByFamily = db.prepare(`

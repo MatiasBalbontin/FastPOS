@@ -22,7 +22,8 @@ import {
   Edit2,
   Lock,
   FileSpreadsheet,
-  FileUp
+  FileUp,
+  FileMinus
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import {
@@ -54,7 +55,7 @@ interface Product {
 interface Analytics {
   topProducts: { name: string; total_sold: number }[];
   categoryAnalysis: { type: string; total_sold: number }[];
-  summary: { total_revenue: number; total_cost: number; total_profit: number };
+  summary: { total_revenue: number; total_cost: number; total_profit: number; cash_revenue: number; card_revenue: number; };
   inventoryByFamily: { type: string; total_stock: number }[];
 }
 
@@ -76,7 +77,7 @@ const SidebarItem = ({ icon: Icon, label, active, onClick }: any) => (
 );
 
 export default function App() {
-  const [view, setView] = useState<'sales' | 'inventory' | 'analytics'>('sales');
+  const [view, setView] = useState<'sales' | 'inventory' | 'analytics' | 'credit_notes'>('sales');
   const [products, setProducts] = useState<Product[]>([]);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [startDate, setStartDate] = useState(new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0]);
@@ -120,11 +121,11 @@ export default function App() {
     }
   }, [view, isExpressModalOpen]);
 
-  const handleSale = async (items: { product_id: string; quantity: number }[]) => {
+  const handleSale = async (items: { product_id: string; quantity: number }[], method: string) => {
     const res = await fetch('/api/sales/bulk', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items })
+      body: JSON.stringify({ items, method })
     });
 
     if (res.ok) {
@@ -170,6 +171,12 @@ export default function App() {
             label="Reportes"
             active={view === 'analytics'}
             onClick={() => setView('analytics')}
+          />
+          <SidebarItem
+            icon={FileMinus}
+            label="Notas de Crédito"
+            active={view === 'credit_notes'}
+            onClick={() => setView('credit_notes')}
           />
         </nav>
 
@@ -217,6 +224,14 @@ export default function App() {
             setStartDate={setStartDate}
             endDate={endDate}
             setEndDate={setEndDate}
+          />
+        )}
+        {view === 'credit_notes' && (
+          <CreditNotesView 
+            onRefresh={() => {
+              fetchProducts();
+              fetchAnalytics();
+            }}
           />
         )}
       </main>
@@ -291,9 +306,9 @@ function SalesView({ searchInputRef, onSale, products, onProductNotFound }: any)
     }
   };
 
-  const handleFinishSale = async () => {
+  const handleFinishSale = async (method: string) => {
     const items = cart.map(item => ({ product_id: item.product.id, quantity: item.quantity }));
-    const success = await onSale(items);
+    const success = await onSale(items, method);
     if (success) {
       setCart([]);
       setIsPaymentModalOpen(false);
@@ -483,7 +498,7 @@ function PaymentModal({ total, onClose, onConfirm }: any) {
                 </button>
                 <button
                   disabled={change < 0}
-                  onClick={onConfirm}
+                  onClick={() => onConfirm('cash')}
                   className="flex-[2] bg-[var(--ink)] text-[var(--bg)] py-4 font-bold uppercase text-xs hover:opacity-90 transition-opacity disabled:opacity-30"
                 >
                   Confirmar Venta
@@ -529,7 +544,7 @@ function PaymentModal({ total, onClose, onConfirm }: any) {
                       No, Revisar
                     </button>
                     <button
-                      onClick={onConfirm}
+                      onClick={() => onConfirm('card')}
                       className="flex-[2] bg-green-600 text-white py-4 font-bold uppercase text-xs hover:opacity-90 transition-opacity"
                     >
                       Confirmar y Rebajar Stock
@@ -790,6 +805,23 @@ function AnalyticsView({ analytics, startDate, setStartDate, endDate, setEndDate
         <StatCard label="Ingresos Totales" value={`$${analytics.summary.total_revenue?.toLocaleString() || 0}`} />
         <StatCard label="Costo de Ventas" value={`$${analytics.summary.total_cost?.toLocaleString() || 0}`} />
         <StatCard label="Utilidad Real (FIFO)" value={`$${analytics.summary.total_profit?.toLocaleString() || 0}`} trend />
+      </div>
+
+      <div className="grid grid-cols-2 gap-8">
+        <div className="p-6 border border-[var(--line)] bg-white rounded-2xl shadow-sm flex items-center justify-between border-l-4 border-l-green-500">
+          <div>
+            <div className="text-[10px] font-bold uppercase text-gray-500 tracking-widest mb-1">Pagos en Efectivo</div>
+            <div className="text-3xl font-mono font-bold text-green-700">${analytics.summary.cash_revenue?.toLocaleString() || 0}</div>
+          </div>
+          <Banknote size={32} className="opacity-20 text-green-700" />
+        </div>
+        <div className="p-6 border border-[var(--line)] bg-white rounded-2xl shadow-sm flex items-center justify-between border-l-4 border-l-blue-500">
+          <div>
+            <div className="text-[10px] font-bold uppercase text-gray-500 tracking-widest mb-1">Pagos con Tarjeta</div>
+            <div className="text-3xl font-mono font-bold text-blue-700">${analytics.summary.card_revenue?.toLocaleString() || 0}</div>
+          </div>
+          <CreditCard size={32} className="opacity-20 text-blue-700" />
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-8">
@@ -1298,6 +1330,89 @@ function ExpressModal({ initialId, onClose, onSuccess }: any) {
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function CreditNotesView({ onRefresh }: { onRefresh: () => void }) {
+  const [tickets, setTickets] = useState<any[]>([]);
+
+  const fetchHistory = async () => {
+    const res = await fetch('/api/sales/history');
+    if (res.ok) {
+      setTickets(await res.json());
+    }
+  };
+
+  useEffect(() => {
+    fetchHistory();
+  }, []);
+
+  const handleVoid = async (ticket_id: string) => {
+    if (!window.confirm("¿Estás seguro de anular esta venta? Esta acción no se puede deshacer y devolverá los productos al stock.")) return;
+
+    const res = await fetch(`/api/sales/void/${ticket_id}`, { method: 'POST' });
+    if (res.ok) {
+      toast.success("Venta anulada con éxito");
+      fetchHistory();
+      onRefresh();
+    } else {
+      const error = await res.json();
+      toast.error(error.error || "Error al anular venta");
+    }
+  };
+
+  return (
+    <div className="p-8 max-w-5xl mx-auto">
+      <div className="mb-8">
+        <h2 className="text-3xl font-bold tracking-tight text-[var(--ink)]">Notas de Crédito</h2>
+        <p className="text-sm text-gray-500 mt-1">Historial de ventas y anulaciones.</p>
+      </div>
+
+      <div className="space-y-4">
+        {tickets.map(ticket => (
+          <div key={ticket.ticket_id} className={cn("p-6 border rounded-2xl bg-white shadow-sm transition-all", ticket.status === 'voided' ? "opacity-50 border-red-200 bg-red-50" : "border-[var(--line)]")}>
+            <div className="flex justify-between items-start mb-4 border-b border-[var(--line)] pb-4">
+              <div>
+                <div className="text-xs font-mono text-gray-400 mb-1">{ticket.ticket_id}</div>
+                <div className="font-bold flex items-center gap-2">
+                  {new Date(ticket.created_at).toLocaleString()}
+                  {ticket.payment_method === 'cash' ? <Banknote size={14} className="text-green-600"/> : <CreditCard size={14} className="text-blue-600"/>}
+                </div>
+              </div>
+              <div className="text-right">
+                <div className={cn("text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded inline-block", ticket.status === 'completed' ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700")}>
+                  {ticket.status === 'completed' ? 'COMPLETADA' : 'ANULADA'}
+                </div>
+                <div className="text-2xl font-bold mt-1">${ticket.total_amount?.toLocaleString() || 0}</div>
+              </div>
+            </div>
+
+            <div className="space-y-2 mb-4">
+              {ticket.items.map((item: any, i: number) => (
+                <div key={i} className="flex justify-between text-sm">
+                  <div><span className="font-mono text-gray-400 mr-2">{item.quantity}x</span> {item.name}</div>
+                  <div className="font-mono">${(item.quantity * item.sale_price).toLocaleString()}</div>
+                </div>
+              ))}
+            </div>
+
+            {ticket.status === 'completed' && (
+              <div className="flex justify-end pt-4 border-t border-[var(--line)]">
+                <button 
+                  onClick={() => handleVoid(ticket.ticket_id)}
+                  className="px-4 py-2 bg-red-50 text-red-600 font-bold uppercase text-xs rounded hover:bg-red-600 hover:text-white transition-colors"
+                >
+                  Anular Venta Completa
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+        {tickets.length === 0 && (
+          <div className="text-center py-12 text-gray-400 italic">No hay registros de ventas recientes.</div>
+        )}
       </div>
     </div>
   );
