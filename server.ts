@@ -167,6 +167,30 @@ async function startServer() {
     }
   });
 
+  // Delete Product
+  app.delete('/api/products/:id', (req, res) => {
+    const { id } = req.params;
+    try {
+      const transaction = db.transaction(() => {
+        // Enforce data integrity: do not delete products that have been sold
+        const salesCount = db.prepare('SELECT COUNT(*) as count FROM sales WHERE product_id = ?').get(id) as any;
+        if (salesCount.count > 0) {
+          throw new Error('No se puede eliminar un producto con historial de ventas. Para sacarlo de tu catálogo, simplemente déjalo con Stock 0.');
+        }
+
+        // Delete all associated batches first to prevent orphans
+        db.prepare('DELETE FROM batches WHERE product_id = ?').run(id);
+
+        // Finally, delete the product
+        db.prepare('DELETE FROM products WHERE id = ?').run(id);
+      });
+      transaction();
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   // Bulk Import
   app.post('/api/products/bulk', (req, res) => {
     const { products: importData } = req.body;
@@ -239,7 +263,7 @@ async function startServer() {
           const lastBatch = db.prepare('SELECT cost FROM batches WHERE product_id = ? ORDER BY created_at DESC LIMIT 1').get(product_id) as any;
           const fallbackCost = lastBatch ? lastBatch.cost : 0;
           totalCost += remainingToSell * fallbackCost;
-          
+
           db.prepare('INSERT INTO batches (product_id, quantity, initial_quantity, cost) VALUES (?, ?, ?, ?)')
             .run(product_id, -remainingToSell, -remainingToSell, fallbackCost);
         }
@@ -297,7 +321,7 @@ async function startServer() {
             const lastBatch = db.prepare('SELECT cost FROM batches WHERE product_id = ? ORDER BY created_at DESC LIMIT 1').get(product_id) as any;
             const fallbackCost = lastBatch ? lastBatch.cost : 0;
             totalCost += remainingToSell * fallbackCost;
-            
+
             db.prepare('INSERT INTO batches (product_id, quantity, initial_quantity, cost) VALUES (?, ?, ?, ?)')
               .run(product_id, -remainingToSell, -remainingToSell, fallbackCost);
           }
