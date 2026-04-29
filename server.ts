@@ -37,14 +37,42 @@ db.exec(`
   );
 `);
 
-const tableInfo = db.prepare("PRAGMA table_info(sales)").all() as any[];
-const hasTicketId = tableInfo.some(col => col.name === 'ticket_id');
-if (!hasTicketId) {
+const tableInfoSales = db.prepare("PRAGMA table_info(sales)").all() as any[];
+if (!tableInfoSales.some(col => col.name === 'ticket_id')) {
   db.exec(`
     ALTER TABLE sales ADD COLUMN ticket_id TEXT;
     ALTER TABLE sales ADD COLUMN payment_method TEXT DEFAULT 'cash';
     ALTER TABLE sales ADD COLUMN status TEXT DEFAULT 'completed';
   `);
+}
+if (!tableInfoSales.some(col => col.name === 'customer_id')) {
+  db.exec(`ALTER TABLE sales ADD COLUMN customer_id INTEGER;`);
+}
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS customers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    rut TEXT UNIQUE,
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS customer_payments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    customer_id INTEGER NOT NULL,
+    amount REAL NOT NULL,
+    method TEXT NOT NULL,
+    status TEXT DEFAULT 'completed',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (customer_id) REFERENCES customers(id)
+  );
+`);
+
+try {
+  db.exec(`ALTER TABLE customer_payments ADD COLUMN status TEXT DEFAULT 'completed'`);
+} catch (e) {
+  // Ignore if column already exists
 }
 
 db.exec(`
@@ -285,7 +313,7 @@ async function startServer() {
 
   // Register Bulk Sales (POS Transaction)
   app.post('/api/sales/bulk', (req, res) => {
-    const { items, method = 'cash' } = req.body; // Array of { product_id, quantity }, and method
+    const { items, method = 'cash', customer_id } = req.body; // Array of { product_id, quantity }, and method
     const ticket_id = `TKT-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
     try {
@@ -327,9 +355,9 @@ async function startServer() {
           }
 
           db.prepare(`
-            INSERT INTO sales (product_id, quantity, sale_price, total_cost, ticket_id, payment_method, status)
-            VALUES (?, ?, ?, ?, ?, ?, 'completed')
-          `).run(product_id, quantity, product.sale_price, totalCost, ticket_id, method);
+            INSERT INTO sales (product_id, quantity, sale_price, total_cost, ticket_id, payment_method, status, customer_id)
+            VALUES (?, ?, ?, ?, ?, ?, 'completed', ?)
+          `).run(product_id, quantity, product.sale_price, totalCost, ticket_id, method, customer_id || null);
 
           results.push({ product_id, totalCost, salePrice: product.sale_price });
         }
@@ -344,12 +372,25 @@ async function startServer() {
   });
 
   // Get Sales History
-  app.get('/api/sales/history', (req, res) => {
+  app.get('/api/history', (req, res) => {
+    const { startDate, endDate } = req.query;
     try {
+      let salesDateFilter = "";
+      let paymentsDateFilter = "";
+      let params: any[] = [];
+      let params2: any[] = [];
+      if (startDate && endDate) {
+        salesDateFilter = "AND datetime(s.created_at) BETWEEN datetime(?) AND datetime(?)";
+        paymentsDateFilter = "AND datetime(p.created_at) BETWEEN datetime(?) AND datetime(?)";
+        params = [startDate, endDate];
+        params2 = [startDate, endDate];
+      }
+
       const tickets = db.prepare(`
         SELECT 
-          s.ticket_id, 
-          s.payment_method,
+          s.ticket_id as id, 
+          'sale' as type,
+          s.payment_method as method,
           s.status,
           s.created_at,
           SUM(s.quantity * s.sale_price) as total_amount,
@@ -358,22 +399,50 @@ async function startServer() {
             'name', p.name,
             'quantity', s.quantity,
             'sale_price', s.sale_price
-          )) as items
+          )) as items,
+          c.first_name || ' ' || c.last_name as customer_name
         FROM sales s
         JOIN products p ON s.product_id = p.id
-        WHERE s.ticket_id IS NOT NULL
+        LEFT JOIN customers c ON s.customer_id = c.id
+        WHERE s.ticket_id IS NOT NULL ${salesDateFilter}
         GROUP BY s.ticket_id
-        ORDER BY s.created_at DESC
-        LIMIT 100
-      `).all() as any[];
+      `).all(...params) as any[];
 
-      // Parse JSON items
-      const formatted = tickets.map(t => ({
+      const payments = db.prepare(`
+        SELECT 
+          p.id as id, 
+          'payment' as type,
+          p.method as method,
+          p.status,
+          p.created_at,
+          p.amount as total_amount,
+          '[]' as items,
+          c.first_name || ' ' || c.last_name as customer_name
+        FROM customer_payments p
+        JOIN customers c ON p.customer_id = c.id
+        WHERE 1=1 ${paymentsDateFilter}
+      `).all(...params2) as any[];
+
+      const combined = [...tickets, ...payments].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      
+      const limited = (startDate && endDate) ? combined : combined.slice(0, 100);
+
+      const formatted = limited.map(t => ({
         ...t,
         items: JSON.parse(t.items)
       }));
 
       res.json(formatted);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.post('/api/receivables/pay/void/:id', (req, res) => {
+    const { id } = req.params;
+    try {
+      db.prepare("UPDATE customer_payments SET status = 'voided' WHERE id = ?").run(id);
+      res.json({ success: true });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
     }
@@ -443,6 +512,115 @@ async function startServer() {
     }
   });
 
+  // --- Customers & Receivables ---
+
+  app.get('/api/customers', (req, res) => {
+    try {
+      const customers = db.prepare('SELECT * FROM customers ORDER BY first_name ASC').all();
+      res.json(customers);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.post('/api/customers', (req, res) => {
+    const { rut, first_name, last_name } = req.body;
+    try {
+      if (!first_name || !last_name) throw new Error("Nombre y apellido son obligatorios");
+      const result = db.prepare(`
+        INSERT INTO customers (rut, first_name, last_name)
+        VALUES (?, ?, ?)
+      `).run(rut || null, first_name.toUpperCase(), last_name.toUpperCase());
+      res.json({ success: true, id: result.lastInsertRowid });
+    } catch (error: any) {
+      if (error.message.includes('UNIQUE constraint failed')) {
+        res.status(400).json({ error: 'Ya existe un cliente con este RUT' });
+      } else {
+        res.status(400).json({ error: error.message });
+      }
+    }
+  });
+
+  app.get('/api/receivables', (req, res) => {
+    try {
+      const debtors = db.prepare(`
+        WITH Debtors AS (
+          SELECT 
+            c.id, c.rut, c.first_name, c.last_name,
+            COALESCE((
+              SELECT SUM(s.quantity * s.sale_price) 
+              FROM sales s 
+              WHERE s.customer_id = c.id AND s.payment_method = 'cuenta_por_cobrar' AND s.status = 'completed'
+            ), 0) - 
+            COALESCE((
+              SELECT SUM(p.amount) 
+              FROM customer_payments p 
+              WHERE p.customer_id = c.id AND p.status = 'completed'
+            ), 0) as total_debt
+          FROM customers c
+        )
+        SELECT * FROM Debtors
+        WHERE total_debt > 0
+        ORDER BY total_debt DESC
+      `).all();
+      res.json(debtors);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.get('/api/receivables/:customer_id', (req, res) => {
+    const { customer_id } = req.params;
+    try {
+      const debts = db.prepare(`
+        SELECT 
+          ticket_id, 
+          created_at as date,
+          SUM(quantity * sale_price) as amount,
+          'debt' as type,
+          status
+        FROM sales 
+        WHERE customer_id = ? AND payment_method = 'cuenta_por_cobrar' AND status = 'completed'
+        GROUP BY ticket_id
+      `).all(customer_id);
+
+      const payments = db.prepare(`
+        SELECT 
+          id as ticket_id,
+          created_at as date,
+          amount,
+          'payment' as type,
+          method,
+          status
+        FROM customer_payments
+        WHERE customer_id = ?
+      `).all(customer_id);
+
+      const history = [...debts, ...payments].sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      
+      const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(customer_id);
+
+      res.json({ customer, history });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.post('/api/receivables/:customer_id/pay', (req, res) => {
+    const { customer_id } = req.params;
+    const { amount, method } = req.body;
+    try {
+      if (!amount || !method) throw new Error("Monto y método son obligatorios");
+      db.prepare(`
+        INSERT INTO customer_payments (customer_id, amount, method)
+        VALUES (?, ?, ?)
+      `).run(customer_id, amount, method);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   // Analytics
   app.get('/api/analytics', (req, res) => {
     const { period = 'month', startDate, endDate } = req.query;
@@ -483,9 +661,18 @@ async function startServer() {
         SUM(quantity * sale_price) as total_revenue,
         SUM(total_cost) as total_cost,
         SUM(quantity * sale_price) - SUM(total_cost) as total_profit,
-        SUM(CASE WHEN payment_method = 'cash' THEN quantity * sale_price ELSE 0 END) as cash_revenue,
-        SUM(CASE WHEN payment_method = 'card' THEN quantity * sale_price ELSE 0 END) as card_revenue
+        SUM(CASE WHEN payment_method = 'cash' THEN quantity * sale_price ELSE 0 END) as cash_revenue_sales,
+        SUM(CASE WHEN payment_method = 'card' THEN quantity * sale_price ELSE 0 END) as card_revenue_sales,
+        SUM(CASE WHEN payment_method = 'cuenta_por_cobrar' THEN quantity * sale_price ELSE 0 END) as receivables_revenue
       FROM sales
+      WHERE ${dateFilter} AND status != 'voided'
+    `).get(...params) as any;
+
+    const paymentsSummary = db.prepare(`
+      SELECT 
+        SUM(CASE WHEN method = 'cash' THEN amount ELSE 0 END) as cash_payments,
+        SUM(CASE WHEN method = 'card' THEN amount ELSE 0 END) as card_payments
+      FROM customer_payments
       WHERE ${dateFilter} AND status != 'voided'
     `).get(...params) as any;
 
@@ -497,6 +684,14 @@ async function startServer() {
       FROM expenses
       WHERE ${dateFilter}
     `).get(...params) as any;
+
+    const cash_revenue = (summary.cash_revenue_sales || 0) + (paymentsSummary.cash_payments || 0);
+    const card_revenue = (summary.card_revenue_sales || 0) + (paymentsSummary.card_payments || 0);
+    summary.cash_revenue = cash_revenue;
+    summary.card_revenue = card_revenue;
+    summary.total_receivables = (summary.receivables_revenue || 0) - (paymentsSummary.cash_payments || 0) - (paymentsSummary.card_payments || 0);
+
+
 
     const inventoryByFamily = db.prepare(`
       SELECT p.type, SUM(b.quantity) as total_stock, SUM(b.quantity * b.cost) as total_value

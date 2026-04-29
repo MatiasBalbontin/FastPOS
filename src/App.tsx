@@ -24,7 +24,9 @@ import {
   FileSpreadsheet,
   FileUp,
   FileMinus,
-  Receipt
+  Receipt,
+  History,
+  FileText
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import {
@@ -83,7 +85,7 @@ const SidebarItem = ({ icon: Icon, label, active, onClick }: any) => (
 );
 
 export default function App() {
-  const [view, setView] = useState<'sales' | 'inventory' | 'analytics' | 'credit_notes' | 'expenses'>('sales');
+  const [view, setView] = useState<'sales' | 'inventory' | 'analytics' | 'history' | 'expenses' | 'receivables'>('sales');
   const [products, setProducts] = useState<Product[]>([]);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [startDate, setStartDate] = useState(new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0]);
@@ -127,11 +129,11 @@ export default function App() {
     }
   }, [view, isExpressModalOpen]);
 
-  const handleSale = async (items: { product_id: string; quantity: number }[], method: string) => {
+  const handleSale = async (items: { product_id: string; quantity: number }[], method: string, customer_id?: string) => {
     const res = await fetch('/api/sales/bulk', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items, method })
+      body: JSON.stringify({ items, method, customer_id })
     });
 
     if (res.ok) {
@@ -179,10 +181,16 @@ export default function App() {
             onClick={() => setView('analytics')}
           />
           <SidebarItem
-            icon={FileMinus}
-            label="Notas de Crédito"
-            active={view === 'credit_notes'}
-            onClick={() => setView('credit_notes')}
+            icon={History}
+            label="Historial"
+            active={view === 'history'}
+            onClick={() => setView('history')}
+          />
+          <SidebarItem
+            icon={CreditCard}
+            label="Cuentas por Cobrar"
+            active={view === 'receivables'}
+            onClick={() => setView('receivables')}
           />
           <SidebarItem
             icon={Receipt}
@@ -238,10 +246,17 @@ export default function App() {
             setEndDate={setEndDate}
           />
         )}
-        {view === 'credit_notes' && (
-          <CreditNotesView 
+        {view === 'history' && (
+          <HistoryView 
             onRefresh={() => {
               fetchProducts();
+              fetchAnalytics();
+            }}
+          />
+        )}
+        {view === 'receivables' && (
+          <ReceivablesView 
+            onRefresh={() => {
               fetchAnalytics();
             }}
           />
@@ -304,14 +319,27 @@ function SalesView({ searchInputRef, onSale, products, onProductNotFound }: any)
   const updateQuantity = (productId: string, delta: number) => {
     setCart(prev => prev.map(item => {
       if (item.product.id === productId) {
-        const newQty = Math.max(1, item.quantity + delta);
+        const currentQty = typeof item.quantity === 'number' ? item.quantity : 0;
+        const newQty = Math.max(1, currentQty + delta);
         return { ...item, quantity: newQty };
       }
       return item;
     }));
   };
 
-  const total = cart.reduce((acc, item) => acc + (item.product.sale_price * item.quantity), 0);
+  const setQuantityExact = (productId: string, val: string) => {
+    setCart(prev => prev.map(item => {
+      if (item.product.id === productId) {
+        if (val === '') return { ...item, quantity: '' as any };
+        const parsed = parseInt(val);
+        const newQty = isNaN(parsed) ? 1 : Math.max(1, parsed);
+        return { ...item, quantity: newQty };
+      }
+      return item;
+    }));
+  };
+
+  const total = cart.reduce((acc, item) => acc + (item.product.sale_price * (Number(item.quantity) || 0)), 0);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -325,9 +353,9 @@ function SalesView({ searchInputRef, onSale, products, onProductNotFound }: any)
     }
   };
 
-  const handleFinishSale = async (method: string) => {
+  const handleFinishSale = async (method: string, customer_id?: string) => {
     const items = cart.map(item => ({ product_id: item.product.id, quantity: item.quantity }));
-    const success = await onSale(items, method);
+    const success = await onSale(items, method, customer_id);
     if (success) {
       setCart([]);
       setIsPaymentModalOpen(false);
@@ -405,13 +433,24 @@ function SalesView({ searchInputRef, onSale, products, onProductNotFound }: any)
                   </button>
                 </div>
                 <div className="flex justify-between items-center">
-                  <div className="flex items-center border border-[var(--line)] bg-white">
-                    <button onClick={() => updateQuantity(item.product.id, -1)} className="p-1 hover:bg-gray-100 border-r border-[var(--line)]"><Minus size={12} /></button>
-                    <span className="px-3 font-mono text-xs">{item.quantity}</span>
-                    <button onClick={() => updateQuantity(item.product.id, 1)} className="p-1 hover:bg-gray-100 border-l border-[var(--line)]"><Plus size={12} /></button>
+                  <div className="flex items-center border border-[var(--line)] bg-white rounded overflow-hidden">
+                    <button onClick={() => updateQuantity(item.product.id, -1)} className="p-2 hover:bg-gray-100 border-r border-[var(--line)]"><Minus size={12} /></button>
+                    <input 
+                      type="number" 
+                      min="1"
+                      value={item.quantity} 
+                      onChange={(e) => setQuantityExact(item.product.id, e.target.value)}
+                      onBlur={(e) => {
+                        if (e.target.value === '' || Number(e.target.value) < 1) {
+                           setQuantityExact(item.product.id, '1');
+                        }
+                      }}
+                      className="w-12 text-center font-mono text-xs py-1 focus:outline-none focus:bg-blue-50"
+                    />
+                    <button onClick={() => updateQuantity(item.product.id, 1)} className="p-2 hover:bg-gray-100 border-l border-[var(--line)]"><Plus size={12} /></button>
                   </div>
                   <div className="font-mono text-sm font-bold">
-                    ${(item.product.sale_price * item.quantity).toLocaleString()}
+                    ${(item.product.sale_price * (Number(item.quantity) || 0)).toLocaleString()}
                   </div>
                 </div>
               </div>
@@ -447,9 +486,49 @@ function SalesView({ searchInputRef, onSale, products, onProductNotFound }: any)
 }
 
 function PaymentModal({ total, onClose, onConfirm }: any) {
-  const [method, setMethod] = useState<'cash' | 'card' | null>(null);
+  const [method, setMethod] = useState<'cash' | 'card' | 'cuenta_por_cobrar' | null>(null);
   const [received, setReceived] = useState('');
   const [confirmCard, setConfirmCard] = useState(false);
+
+  // Cuenta por Cobrar state
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [searchCustomer, setSearchCustomer] = useState('');
+  const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+  const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
+  const [newCustomer, setNewCustomer] = useState({ rut: '', first_name: '', last_name: '' });
+
+  useEffect(() => {
+    if (method === 'cuenta_por_cobrar') {
+      fetch('/api/customers').then(res => res.json()).then(setCustomers);
+    }
+  }, [method]);
+
+  const handleCreateCustomer = async () => {
+    const res = await fetch('/api/customers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newCustomer)
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const newC = { ...newCustomer, id: data.id };
+      setCustomers([...customers, newC]);
+      setSelectedCustomer(newC);
+      setIsCreatingCustomer(false);
+      setSearchCustomer('');
+    } else {
+      try {
+        const data = await res.json();
+        toast.error(data.error || "Error al crear cliente");
+      } catch (e) {
+        toast.error("Error de servidor. ¿Reiniciaste la consola (npm run dev)?");
+      }
+    }
+  };
+
+  const filteredCustomers = customers.filter(c => 
+    `${c.first_name} ${c.last_name} ${c.rut}`.toLowerCase().includes(searchCustomer.toLowerCase())
+  );
 
   const change = method === 'cash' ? (parseFloat(received) || 0) - total : 0;
 
@@ -468,20 +547,27 @@ function PaymentModal({ total, onClose, onConfirm }: any) {
           </div>
 
           {!method ? (
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-3 gap-4">
               <button
                 onClick={() => setMethod('cash')}
-                className="flex flex-col items-center gap-4 p-8 border-2 border-[var(--line)] hover:bg-[var(--ink)] hover:text-[var(--bg)] transition-all group"
+                className="flex flex-col items-center gap-4 p-6 border-2 border-[var(--line)] hover:bg-[var(--ink)] hover:text-[var(--bg)] transition-all group rounded-xl"
               >
-                <Banknote size={48} className="opacity-40 group-hover:opacity-100" />
-                <span className="font-bold uppercase text-sm tracking-widest">Efectivo</span>
+                <Banknote size={40} className="opacity-40 group-hover:opacity-100" />
+                <span className="font-bold uppercase text-xs tracking-widest text-center">Efectivo</span>
               </button>
               <button
                 onClick={() => setMethod('card')}
-                className="flex flex-col items-center gap-4 p-8 border-2 border-[var(--line)] hover:bg-[var(--ink)] hover:text-[var(--bg)] transition-all group"
+                className="flex flex-col items-center gap-4 p-6 border-2 border-[var(--line)] hover:bg-[var(--ink)] hover:text-[var(--bg)] transition-all group rounded-xl"
               >
-                <CreditCard size={48} className="opacity-40 group-hover:opacity-100" />
-                <span className="font-bold uppercase text-sm tracking-widest">Tarjeta</span>
+                <CreditCard size={40} className="opacity-40 group-hover:opacity-100" />
+                <span className="font-bold uppercase text-xs tracking-widest text-center">Tarjeta</span>
+              </button>
+              <button
+                onClick={() => setMethod('cuenta_por_cobrar')}
+                className="flex flex-col items-center gap-4 p-6 border-2 border-[var(--line)] hover:bg-[var(--ink)] hover:text-[var(--bg)] transition-all group rounded-xl"
+              >
+                <FileMinus size={40} className="opacity-40 group-hover:opacity-100" />
+                <span className="font-bold uppercase text-xs tracking-widest text-center">Por Cobrar</span>
               </button>
             </div>
           ) : method === 'cash' ? (
@@ -524,7 +610,7 @@ function PaymentModal({ total, onClose, onConfirm }: any) {
                 </button>
               </div>
             </div>
-          ) : (
+          ) : method === 'card' ? (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 text-center">
               {!confirmCard ? (
                 <>
@@ -572,7 +658,77 @@ function PaymentModal({ total, onClose, onConfirm }: any) {
                 </div>
               )}
             </div>
-          )}
+          ) : method === 'cuenta_por_cobrar' ? (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 text-left">
+              {!isCreatingCustomer ? (
+                <>
+                  {!selectedCustomer ? (
+                    <div>
+                      <label className="text-[10px] font-bold uppercase opacity-50 block mb-2">Buscar Cliente</label>
+                      <input
+                        type="text"
+                        autoFocus
+                        value={searchCustomer}
+                        onChange={e => setSearchCustomer(e.target.value)}
+                        placeholder="Nombre, Apellido o RUT..."
+                        className="w-full bg-white border border-[var(--line)] p-3 text-sm rounded focus:outline-none focus:ring-2 ring-blue-100 mb-2"
+                      />
+                      {searchCustomer && (
+                        <div className="max-h-40 overflow-y-auto border border-[var(--line)] rounded-lg bg-white shadow-sm mb-4">
+                          {filteredCustomers.length > 0 ? (
+                            filteredCustomers.map(c => (
+                              <button key={c.id} onClick={() => setSelectedCustomer(c)} className="w-full text-left p-3 hover:bg-gray-50 border-b border-[var(--line)] text-sm">
+                                <div className="font-bold">{c.first_name} {c.last_name}</div>
+                                <div className="text-xs text-gray-500">{c.rut}</div>
+                              </button>
+                            ))
+                          ) : (
+                            <div className="p-4 text-center text-sm text-gray-500">No se encontraron clientes.</div>
+                          )}
+                        </div>
+                      )}
+                      <button onClick={() => setIsCreatingCustomer(true)} className="w-full border border-dashed border-[var(--primary)] text-[var(--primary)] py-3 rounded text-sm font-bold hover:bg-blue-50 transition-colors flex items-center justify-center gap-2">
+                        <Plus size={16} /> Crear Nuevo Cliente
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="p-6 border border-green-200 bg-green-50 rounded-xl text-center relative">
+                      <button onClick={() => setSelectedCustomer(null)} className="absolute top-2 right-2 text-gray-400 hover:text-gray-700"><X size={16}/></button>
+                      <div className="text-[10px] font-bold text-green-700 uppercase tracking-widest mb-1">Cliente Seleccionado</div>
+                      <div className="text-xl font-bold text-green-900">{selectedCustomer.first_name} {selectedCustomer.last_name}</div>
+                      <div className="text-xs text-green-700 opacity-70 mt-1">{selectedCustomer.rut}</div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-4 mt-6">
+                    <button onClick={() => { setMethod(null); setSelectedCustomer(null); setSearchCustomer(''); }} className="flex-1 border border-[var(--line)] py-4 font-bold uppercase text-xs hover:bg-white transition-colors text-center">Volver</button>
+                    <button 
+                      disabled={!selectedCustomer}
+                      onClick={() => onConfirm('cuenta_por_cobrar', selectedCustomer?.id)} 
+                      className="flex-[2] bg-[var(--ink)] text-[var(--bg)] py-4 font-bold uppercase text-xs hover:opacity-90 transition-opacity disabled:opacity-30"
+                    >
+                      Confirmar Fiado
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <h4 className="font-bold text-sm">Nuevo Cliente</h4>
+                    <button onClick={() => setIsCreatingCustomer(false)} className="text-gray-400 hover:text-gray-700"><X size={16}/></button>
+                  </div>
+                  <input type="text" placeholder="RUT (Opcional)" value={newCustomer.rut} onChange={e => setNewCustomer({...newCustomer, rut: e.target.value})} className="w-full bg-white border border-[var(--line)] p-3 text-sm rounded focus:outline-none" />
+                  <input type="text" placeholder="Nombre *" value={newCustomer.first_name} onChange={e => setNewCustomer({...newCustomer, first_name: e.target.value})} className="w-full bg-white border border-[var(--line)] p-3 text-sm rounded focus:outline-none" />
+                  <input type="text" placeholder="Apellido *" value={newCustomer.last_name} onChange={e => setNewCustomer({...newCustomer, last_name: e.target.value})} className="w-full bg-white border border-[var(--line)] p-3 text-sm rounded focus:outline-none" />
+                  
+                  <div className="flex gap-4 pt-2">
+                    <button onClick={() => setIsCreatingCustomer(false)} className="flex-1 border border-[var(--line)] py-3 font-bold uppercase text-xs hover:bg-white transition-colors text-center">Cancelar</button>
+                    <button disabled={!newCustomer.first_name || !newCustomer.last_name} onClick={handleCreateCustomer} className="flex-1 bg-[var(--primary)] text-white py-3 font-bold uppercase text-xs hover:opacity-90 transition-opacity disabled:opacity-30">Guardar</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
@@ -843,7 +999,7 @@ function AnalyticsView({ analytics, startDate, setStartDate, endDate, setEndDate
         <StatCard label="Valor Total Inventario" value={`$${analytics.summary.total_inventory_value?.toLocaleString() || 0}`} />
       </div>
 
-      <div className="grid grid-cols-2 gap-8">
+      <div className="grid grid-cols-3 gap-8">
         <div className="p-6 border border-[var(--line)] bg-white rounded-2xl shadow-sm flex items-center justify-between border-l-4 border-l-green-500">
           <div>
             <div className="text-[10px] font-bold uppercase text-gray-500 tracking-widest mb-1">Caja Efectivo (Neto)</div>
@@ -858,9 +1014,16 @@ function AnalyticsView({ analytics, startDate, setStartDate, endDate, setEndDate
           </div>
           <CreditCard size={32} className="opacity-20 text-blue-700" />
         </div>
+        <div className="p-6 border border-[var(--line)] bg-white rounded-2xl shadow-sm flex items-center justify-between border-l-4 border-l-amber-500">
+          <div>
+            <div className="text-[10px] font-bold uppercase text-gray-500 tracking-widest mb-1">Por Cobrar (Fiado)</div>
+            <div className="text-3xl font-mono font-bold text-amber-700">${(analytics.summary.total_receivables || 0).toLocaleString()}</div>
+          </div>
+          <FileMinus size={32} className="opacity-20 text-amber-700" />
+        </div>
         
         {analytics.summary.total_expenses > 0 && (
-          <div className="col-span-2 p-6 border border-[var(--line)] bg-red-50 rounded-2xl shadow-sm flex items-center justify-between border-l-4 border-l-red-500 mt-[-16px]">
+          <div className="col-span-3 p-6 border border-[var(--line)] bg-red-50 rounded-2xl shadow-sm flex items-center justify-between border-l-4 border-l-red-500 mt-[-16px]">
             <div>
               <div className="text-[10px] font-bold uppercase text-red-500 tracking-widest mb-1">Descuentos por Gastos Registrados</div>
               <div className="text-2xl font-mono font-bold text-red-700">
@@ -1393,86 +1556,112 @@ function ExpressModal({ initialId, onClose, onSuccess }: any) {
   );
 }
 
-function CreditNotesView({ onRefresh }: { onRefresh: () => void }) {
-  const [tickets, setTickets] = useState<any[]>([]);
+function HistoryView({ onRefresh }: { onRefresh: () => void }) {
+  const [items, setItems] = useState<any[]>([]);
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().split('T')[0];
+  });
+  const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
 
   const fetchHistory = async () => {
-    const res = await fetch('/api/sales/history');
+    const res = await fetch(`/api/history?startDate=${startDate}T00:00:00&endDate=${endDate}T23:59:59`);
     if (res.ok) {
-      setTickets(await res.json());
+      setItems(await res.json());
     }
   };
 
   useEffect(() => {
     fetchHistory();
-  }, []);
+  }, [startDate, endDate]);
 
-  const handleVoid = async (ticket_id: string) => {
-    if (!window.confirm("¿Estás seguro de anular esta venta? Esta acción no se puede deshacer y devolverá los productos al stock.")) return;
+  const handleVoid = async (id: string, type: string) => {
+    if (!window.confirm("¿Estás seguro de anular esta operación? Esta acción no se puede deshacer.")) return;
 
-    const res = await fetch(`/api/sales/void/${ticket_id}`, { method: 'POST' });
+    const endpoint = type === 'sale' ? `/api/sales/void/${id}` : `/api/receivables/pay/void/${id}`;
+    const res = await fetch(endpoint, { method: 'POST' });
+    
     if (res.ok) {
-      toast.success("Venta anulada con éxito");
+      toast.success("Operación anulada con éxito");
       fetchHistory();
       onRefresh();
     } else {
       const error = await res.json();
-      toast.error(error.error || "Error al anular venta");
+      toast.error(error.error || "Error al anular operación");
     }
   };
 
   return (
     <div className="p-8 max-w-5xl mx-auto">
-      <div className="mb-8">
-        <h2 className="text-3xl font-bold tracking-tight text-[var(--ink)]">Notas de Crédito</h2>
-        <p className="text-sm text-gray-500 mt-1">Historial de ventas y anulaciones.</p>
+      <div className="mb-8 flex justify-between items-end">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight text-[var(--ink)]">Historial</h2>
+          <p className="text-sm text-gray-500 mt-1">Registro de ventas, fiados y abonos.</p>
+        </div>
+        <div className="flex items-center gap-4 bg-white p-2 rounded-xl border border-[var(--line)] shadow-sm">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold uppercase text-gray-400 px-2">Desde</span>
+            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="text-sm font-bold bg-transparent focus:outline-none" />
+          </div>
+          <div className="w-px h-6 bg-[var(--line)]"></div>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold uppercase text-gray-400 px-2">Hasta</span>
+            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="text-sm font-bold bg-transparent focus:outline-none" />
+          </div>
+        </div>
       </div>
 
       <div className="space-y-4">
-        {tickets.map(ticket => (
-          <div key={ticket.ticket_id} className={cn("p-6 border rounded-2xl bg-white shadow-sm transition-all", ticket.status === 'voided' ? "opacity-50 border-red-200 bg-red-50" : "border-[var(--line)]")}>
+        {items.map(item => (
+          <div key={item.type + item.id} className={cn("p-6 border rounded-2xl bg-white shadow-sm transition-all", item.status === 'voided' ? "opacity-50 border-red-200 bg-red-50" : "border-[var(--line)]")}>
             <div className="flex justify-between items-start mb-4 border-b border-[var(--line)] pb-4">
               <div>
-                <div className="text-xs font-mono text-gray-400 mb-1">{ticket.ticket_id}</div>
-                <div className="font-bold flex items-center gap-2">
-                  {new Date(ticket.created_at).toLocaleString()}
-                  {ticket.payment_method === 'cash' ? <Banknote size={14} className="text-green-600"/> : <CreditCard size={14} className="text-blue-600"/>}
+                <div className="text-xs font-mono text-gray-400 mb-1">{item.id}</div>
+                <div className="font-bold flex items-center gap-2 uppercase">
+                  {new Date(item.created_at).toLocaleString()}
+                  {item.method === 'cash' ? <Banknote size={14} className="text-green-600"/> : item.method === 'card' ? <CreditCard size={14} className="text-blue-600"/> : <FileText size={14} className="text-amber-600"/>}
+                  <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+                    {item.type === 'sale' ? (item.method === 'cuenta_por_cobrar' ? 'Venta Fiada' : 'Venta') : 'Abono Recibido'}
+                  </span>
+                  {item.customer_name && <span className="text-[10px] text-gray-500">CLIENTE: {item.customer_name}</span>}
                 </div>
               </div>
               <div className="text-right">
-                <div className={cn("text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded inline-block", ticket.status === 'completed' ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700")}>
-                  {ticket.status === 'completed' ? 'COMPLETADA' : 'ANULADA'}
+                <div className={cn("text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded inline-block", item.status === 'completed' ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700")}>
+                  {item.status === 'completed' ? 'COMPLETADA' : 'ANULADA'}
                 </div>
-                <div className="text-2xl font-bold mt-1">${ticket.total_amount?.toLocaleString() || 0}</div>
+                <div className={cn("text-2xl font-bold mt-1", item.type === 'payment' ? "text-green-600" : "text-[var(--ink)]")}>
+                  {item.type === 'payment' ? '+' : ''}${item.total_amount?.toLocaleString() || 0}
+                </div>
               </div>
             </div>
 
-            <div className="space-y-2 mb-4">
-              {ticket.items.map((item: any, i: number) => (
-                <div key={i} className="flex justify-between text-sm">
-                  <div><span className="font-mono text-gray-400 mr-2">{item.quantity}x</span> {item.name}</div>
-                  <div className="font-mono">${(item.quantity * item.sale_price).toLocaleString()}</div>
-                </div>
-              ))}
-            </div>
+            {item.type === 'sale' && item.items && item.items.length > 0 && (
+              <div className="space-y-2 mb-4">
+                {item.items.map((prod: any, i: number) => (
+                  <div key={i} className="flex justify-between text-sm">
+                    <div><span className="font-mono text-gray-400 mr-2">{prod.quantity}x</span> {prod.name}</div>
+                    <div className="font-mono">${(prod.quantity * prod.sale_price).toLocaleString()}</div>
+                  </div>
+                ))}
+              </div>
+            )}
 
-            {ticket.status === 'completed' && (
+            {item.status === 'completed' && (
               <div className="flex justify-end pt-4 border-t border-[var(--line)]">
                 <button 
-                  onClick={() => handleVoid(ticket.ticket_id)}
+                  onClick={() => handleVoid(item.id, item.type)}
                   className="px-4 py-2 bg-red-50 text-red-600 font-bold uppercase text-xs rounded hover:bg-red-600 hover:text-white transition-colors"
                 >
-                  Anular Venta Completa
+                  Anular Operación
                 </button>
               </div>
             )}
           </div>
         ))}
-        {tickets.length === 0 && (
-          <div className="text-center py-12 text-gray-400 italic">
-            <p>No hay registros de ventas recientes.</p>
-            <p className="text-xs mt-2 opacity-60">Solo las ventas nuevas realizadas en el terminal aparecerán aquí para ser anuladas.</p>
-          </div>
+        {items.length === 0 && (
+          <div className="text-center text-gray-400 py-12">No hay operaciones en este periodo</div>
         )}
       </div>
     </div>
@@ -1591,6 +1780,138 @@ function ExpensesView({ onRefresh }: { onRefresh: () => void }) {
             <div className="p-8 text-center text-gray-400 italic text-sm">No hay gastos registrados.</div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ReceivablesView({ onRefresh }: { onRefresh: () => void }) {
+  const [debtors, setDebtors] = useState<any[]>([]);
+  const [selectedDebtor, setSelectedDebtor] = useState<any>(null);
+  const [history, setHistory] = useState<any[]>([]);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('cash');
+
+  const fetchDebtors = async () => {
+    const res = await fetch('/api/receivables');
+    if (res.ok) setDebtors(await res.json());
+  };
+
+  useEffect(() => {
+    fetchDebtors();
+  }, []);
+
+  const loadDebtorHistory = async (customer_id: string) => {
+    const res = await fetch(`/api/receivables/${customer_id}`);
+    if (res.ok) {
+      const data = await res.json();
+      setSelectedDebtor(data.customer);
+      setHistory(data.history);
+    }
+  };
+
+  const handlePayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!paymentAmount || parseFloat(paymentAmount) <= 0) return;
+    const res = await fetch(`/api/receivables/${selectedDebtor.id}/pay`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount: parseFloat(paymentAmount), method: paymentMethod })
+    });
+    if (res.ok) {
+      toast.success('Abono registrado');
+      setPaymentAmount('');
+      loadDebtorHistory(selectedDebtor.id);
+      fetchDebtors();
+      onRefresh();
+    } else {
+      const err = await res.json();
+      toast.error(err.error || 'Error al registrar abono');
+    }
+  };
+
+  return (
+    <div className="flex h-full">
+      {/* List of debtors */}
+      <div className="w-1/3 border-r border-[var(--line)] bg-white p-6 flex flex-col">
+        <h2 className="text-2xl font-bold tracking-tight text-[var(--ink)] mb-1">Por Cobrar</h2>
+        <p className="text-sm text-gray-500 mb-6">Listado de clientes con deudas.</p>
+        
+        <div className="space-y-3 flex-1 overflow-y-auto pr-2">
+          {debtors.map(d => (
+            <button 
+              key={d.id} 
+              onClick={() => loadDebtorHistory(d.id)}
+              className={cn("w-full p-4 border rounded-xl text-left transition-all", selectedDebtor?.id === d.id ? "border-[var(--primary)] bg-blue-50 ring-2 ring-[var(--primary)]/20" : "border-[var(--line)] hover:border-gray-300")}
+            >
+              <div className="font-bold text-sm uppercase">{d.first_name} {d.last_name}</div>
+              <div className="text-xs text-gray-500 mb-2">{d.rut || 'Sin RUT'}</div>
+              <div className="flex justify-between items-end">
+                <span className="text-[10px] uppercase font-bold text-gray-400 tracking-widest">Saldo Deudor</span>
+                <span className="font-bold text-red-600 font-mono text-lg">${d.total_debt.toLocaleString()}</span>
+              </div>
+            </button>
+          ))}
+          {debtors.length === 0 && (
+             <div className="text-center p-8 text-gray-400 italic text-sm border-2 border-dashed border-[var(--line)] rounded-xl">No hay deudas pendientes.</div>
+          )}
+        </div>
+      </div>
+
+      {/* Debtor details and payment */}
+      <div className="flex-1 bg-gray-50 p-8 flex flex-col h-full overflow-hidden">
+        {selectedDebtor ? (
+          <>
+            <div className="bg-white p-6 rounded-2xl border border-[var(--line)] shadow-sm mb-6 flex justify-between items-center shrink-0">
+              <div>
+                <h3 className="text-xl font-bold uppercase">{selectedDebtor.first_name} {selectedDebtor.last_name}</h3>
+                <p className="text-sm text-gray-500">{selectedDebtor.rut}</p>
+              </div>
+              <form onSubmit={handlePayment} className="flex gap-3 items-end">
+                <div>
+                   <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Monto Abono</label>
+                   <input type="number" required min="1" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} className="w-32 bg-gray-50 border border-[var(--line)] p-2 text-sm font-bold rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20" />
+                </div>
+                <div>
+                   <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Medio</label>
+                   <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} className="w-32 bg-gray-50 border border-[var(--line)] p-2 text-sm rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20">
+                     <option value="cash">Efectivo</option>
+                     <option value="card">Tarjeta</option>
+                   </select>
+                </div>
+                <button type="submit" className="bg-green-600 hover:bg-green-700 text-white font-bold uppercase text-xs px-4 py-2.5 rounded-lg transition-all h-[38px] flex items-center">
+                  Registrar Abono
+                </button>
+              </form>
+            </div>
+
+            <div className="bg-white border border-[var(--line)] rounded-2xl flex-1 overflow-hidden flex flex-col shadow-sm">
+               <div className="p-4 border-b border-[var(--line)] bg-[var(--ink)] text-[var(--bg)]">
+                 <h4 className="font-bold uppercase text-sm tracking-widest">Historial de Movimientos</h4>
+               </div>
+               <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                 {history.map((item, i) => (
+                   <div key={i} className={cn("p-4 border rounded-xl flex justify-between items-center", item.type === 'debt' ? "border-red-200 bg-red-50" : "border-green-200 bg-green-50")}>
+                     <div>
+                       <div className={cn("text-xs font-bold uppercase mb-1", item.type === 'debt' ? "text-red-700" : "text-green-700")}>
+                         {item.type === 'debt' ? `Venta Fiada (Ticket #${item.ticket_id})` : `Abono Realizado (${item.method === 'cash' ? 'Efectivo' : 'Tarjeta'})`}
+                       </div>
+                       <div className="text-xs text-gray-500 font-mono">{new Date(item.date).toLocaleString()}</div>
+                     </div>
+                     <div className={cn("font-bold font-mono text-lg", item.type === 'debt' ? "text-red-600" : "text-green-600")}>
+                       {item.type === 'debt' ? '-' : '+'}${item.amount.toLocaleString()}
+                     </div>
+                   </div>
+                 ))}
+               </div>
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center text-gray-400 italic">
+            <CreditCard size={48} className="mb-4 opacity-20" />
+            <p>Seleccione un cliente para ver su historial y registrar abonos.</p>
+          </div>
+        )}
       </div>
     </div>
   );
