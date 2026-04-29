@@ -1023,7 +1023,7 @@ function AnalyticsView({ analytics, startDate, setStartDate, endDate, setEndDate
         </div>
         
         {analytics.summary.total_expenses > 0 && (
-          <div className="col-span-3 p-6 border border-[var(--line)] bg-red-50 rounded-2xl shadow-sm flex items-center justify-between border-l-4 border-l-red-500 mt-[-16px]">
+          <div className="col-span-3 p-6 border border-[var(--line)] bg-red-50 rounded-2xl shadow-sm flex items-center justify-between border-l-4 border-l-red-500">
             <div>
               <div className="text-[10px] font-bold uppercase text-red-500 tracking-widest mb-1">Descuentos por Gastos Registrados</div>
               <div className="text-2xl font-mono font-bold text-red-700">
