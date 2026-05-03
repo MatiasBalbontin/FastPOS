@@ -26,9 +26,14 @@ import {
   FileMinus,
   Receipt,
   History,
-  FileText
+  FileText,
+  Loader2,
+  LogOut
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
+import { supabase } from './lib/supabase';
+import { api } from './lib/api';
+import { Landing } from './components/Landing';
 import {
   BarChart,
   Bar,
@@ -58,8 +63,8 @@ interface Product {
 interface Analytics {
   topProducts: { name: string; volume: number; revenue: number }[];
   categoryAnalysis: { type: string; volume: number; revenue: number }[];
-  summary: { 
-    total_revenue: number; total_cost: number; total_profit: number; 
+  summary: {
+    total_revenue: number; total_cost: number; total_profit: number;
     cash_revenue: number; card_revenue: number;
     total_expenses: number; cash_expenses: number; card_expenses: number;
     total_inventory_value: number;
@@ -85,6 +90,9 @@ const SidebarItem = ({ icon: Icon, label, active, onClick }: any) => (
 );
 
 export default function App() {
+  const [session, setSession] = useState<any>(null);
+  const [loadingSession, setLoadingSession] = useState(true);
+  
   const [view, setView] = useState<'sales' | 'inventory' | 'analytics' | 'history' | 'expenses' | 'receivables'>('sales');
   const [products, setProducts] = useState<Product[]>([]);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
@@ -96,21 +104,48 @@ export default function App() {
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setLoadingSession(false);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
   const fetchProducts = async () => {
-    const res = await fetch('/api/products');
-    const data = await res.json();
-    setProducts(data);
+    if (!session) return;
+    try {
+      const data = await api.fetchProducts();
+      setProducts(data);
+    } catch (e: any) {
+      console.log('Error fetching products:', e);
+      toast.error('Error al cargar inventario: ' + e.message);
+    }
   };
 
   const fetchAnalytics = async () => {
-    const res = await fetch(`/api/analytics?startDate=${startDate}T00:00:00&endDate=${endDate}T23:59:59`);
-    const data = await res.json();
-    setAnalytics(data);
+    if (!session) return;
+    try {
+      const data = await api.fetchAnalytics(startDate, endDate);
+      setAnalytics(data);
+    } catch (e: any) {
+      console.log('Error fetching analytics:', e);
+      toast.error('Error al cargar analíticas: ' + e.message);
+    }
   };
 
   useEffect(() => {
-    fetchProducts();
-  }, []);
+    if (session) {
+      fetchProducts();
+    }
+  }, [session]);
 
   useEffect(() => {
     fetchAnalytics();
@@ -130,22 +165,33 @@ export default function App() {
   }, [view, isExpressModalOpen]);
 
   const handleSale = async (items: { product_id: string; quantity: number }[], method: string, customer_id?: string) => {
-    const res = await fetch('/api/sales/bulk', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items, method, customer_id })
-    });
-
-    if (res.ok) {
+    try {
+      await api.processBulkSales(items, method, customer_id ? parseInt(customer_id) : undefined);
       toast.success('Venta cargada con éxito');
       fetchProducts();
       fetchAnalytics();
       return true;
-    } else {
-      const data = await res.json();
-      toast.error(data.error);
+    } catch (e: any) {
+      toast.error(e.message || 'Error al procesar venta');
       return false;
     }
+  };
+
+  if (loadingSession) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center">
+        <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
+        <p className="text-slate-500 font-medium animate-pulse">Conectando con Supabase...</p>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <Landing onSession={() => {}} />;
+  }
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
   };
 
   return (
@@ -154,11 +200,16 @@ export default function App() {
 
       {/* Sidebar */}
       <div className="w-64 border-r border-[var(--line)] flex flex-col bg-white p-4">
-        <div className="mb-8 px-2">
-          <h1 className="text-xl font-bold tracking-tight text-[var(--primary)]">FastPOS</h1>
-          <div className="inline-block bg-[var(--accent)] text-[var(--ink)] text-[9px] font-bold px-2 py-0.5 rounded-full mt-1 uppercase tracking-wider">
-            POS_EDITION v1.2.0
+        <div className="mb-8 px-2 flex justify-between items-start">
+          <div>
+            <h1 className="text-xl font-bold tracking-tight text-[var(--primary)]">FastPOS</h1>
+            <div className="inline-block bg-[var(--accent)] text-[var(--ink)] text-[9px] font-bold px-2 py-0.5 rounded-full mt-1 uppercase tracking-wider">
+              SaaS EDITION
+            </div>
           </div>
+          <button onClick={handleLogout} className="text-gray-400 hover:text-red-500 transition-colors" title="Cerrar Sesión">
+            <LogOut size={18} />
+          </button>
         </div>
 
         <nav className="flex-1 mt-4">
@@ -247,7 +298,7 @@ export default function App() {
           />
         )}
         {view === 'history' && (
-          <HistoryView 
+          <HistoryView
             onRefresh={() => {
               fetchProducts();
               fetchAnalytics();
@@ -255,14 +306,14 @@ export default function App() {
           />
         )}
         {view === 'receivables' && (
-          <ReceivablesView 
+          <ReceivablesView
             onRefresh={() => {
               fetchAnalytics();
             }}
           />
         )}
         {view === 'expenses' && (
-          <ExpensesView 
+          <ExpensesView
             onRefresh={() => {
               fetchAnalytics();
             }}
@@ -435,14 +486,14 @@ function SalesView({ searchInputRef, onSale, products, onProductNotFound }: any)
                 <div className="flex justify-between items-center">
                   <div className="flex items-center border border-[var(--line)] bg-white rounded overflow-hidden">
                     <button onClick={() => updateQuantity(item.product.id, -1)} className="p-2 hover:bg-gray-100 border-r border-[var(--line)]"><Minus size={12} /></button>
-                    <input 
-                      type="number" 
+                    <input
+                      type="number"
                       min="1"
-                      value={item.quantity} 
+                      value={item.quantity}
                       onChange={(e) => setQuantityExact(item.product.id, e.target.value)}
                       onBlur={(e) => {
                         if (e.target.value === '' || Number(e.target.value) < 1) {
-                           setQuantityExact(item.product.id, '1');
+                          setQuantityExact(item.product.id, '1');
                         }
                       }}
                       className="w-12 text-center font-mono text-xs py-1 focus:outline-none focus:bg-blue-50"
@@ -526,7 +577,7 @@ function PaymentModal({ total, onClose, onConfirm }: any) {
     }
   };
 
-  const filteredCustomers = customers.filter(c => 
+  const filteredCustomers = customers.filter(c =>
     `${c.first_name} ${c.last_name} ${c.rut}`.toLowerCase().includes(searchCustomer.toLowerCase())
   );
 
@@ -693,7 +744,7 @@ function PaymentModal({ total, onClose, onConfirm }: any) {
                     </div>
                   ) : (
                     <div className="p-6 border border-green-200 bg-green-50 rounded-xl text-center relative">
-                      <button onClick={() => setSelectedCustomer(null)} className="absolute top-2 right-2 text-gray-400 hover:text-gray-700"><X size={16}/></button>
+                      <button onClick={() => setSelectedCustomer(null)} className="absolute top-2 right-2 text-gray-400 hover:text-gray-700"><X size={16} /></button>
                       <div className="text-[10px] font-bold text-green-700 uppercase tracking-widest mb-1">Cliente Seleccionado</div>
                       <div className="text-xl font-bold text-green-900">{selectedCustomer.first_name} {selectedCustomer.last_name}</div>
                       <div className="text-xs text-green-700 opacity-70 mt-1">{selectedCustomer.rut}</div>
@@ -702,9 +753,9 @@ function PaymentModal({ total, onClose, onConfirm }: any) {
 
                   <div className="flex gap-4 mt-6">
                     <button onClick={() => { setMethod(null); setSelectedCustomer(null); setSearchCustomer(''); }} className="flex-1 border border-[var(--line)] py-4 font-bold uppercase text-xs hover:bg-white transition-colors text-center">Volver</button>
-                    <button 
+                    <button
                       disabled={!selectedCustomer}
-                      onClick={() => onConfirm('cuenta_por_cobrar', selectedCustomer?.id)} 
+                      onClick={() => onConfirm('cuenta_por_cobrar', selectedCustomer?.id)}
                       className="flex-[2] bg-[var(--ink)] text-[var(--bg)] py-4 font-bold uppercase text-xs hover:opacity-90 transition-opacity disabled:opacity-30"
                     >
                       Confirmar Fiado
@@ -715,12 +766,12 @@ function PaymentModal({ total, onClose, onConfirm }: any) {
                 <div className="space-y-4">
                   <div className="flex justify-between items-center mb-2">
                     <h4 className="font-bold text-sm">Nuevo Cliente</h4>
-                    <button onClick={() => setIsCreatingCustomer(false)} className="text-gray-400 hover:text-gray-700"><X size={16}/></button>
+                    <button onClick={() => setIsCreatingCustomer(false)} className="text-gray-400 hover:text-gray-700"><X size={16} /></button>
                   </div>
-                  <input type="text" placeholder="RUT (Opcional)" value={newCustomer.rut} onChange={e => setNewCustomer({...newCustomer, rut: e.target.value})} className="w-full bg-white border border-[var(--line)] p-3 text-sm rounded focus:outline-none" />
-                  <input type="text" placeholder="Nombre *" value={newCustomer.first_name} onChange={e => setNewCustomer({...newCustomer, first_name: e.target.value})} className="w-full bg-white border border-[var(--line)] p-3 text-sm rounded focus:outline-none" />
-                  <input type="text" placeholder="Apellido *" value={newCustomer.last_name} onChange={e => setNewCustomer({...newCustomer, last_name: e.target.value})} className="w-full bg-white border border-[var(--line)] p-3 text-sm rounded focus:outline-none" />
-                  
+                  <input type="text" placeholder="RUT (Opcional)" value={newCustomer.rut} onChange={e => setNewCustomer({ ...newCustomer, rut: e.target.value })} className="w-full bg-white border border-[var(--line)] p-3 text-sm rounded focus:outline-none" />
+                  <input type="text" placeholder="Nombre *" value={newCustomer.first_name} onChange={e => setNewCustomer({ ...newCustomer, first_name: e.target.value })} className="w-full bg-white border border-[var(--line)] p-3 text-sm rounded focus:outline-none" />
+                  <input type="text" placeholder="Apellido *" value={newCustomer.last_name} onChange={e => setNewCustomer({ ...newCustomer, last_name: e.target.value })} className="w-full bg-white border border-[var(--line)] p-3 text-sm rounded focus:outline-none" />
+
                   <div className="flex gap-4 pt-2">
                     <button onClick={() => setIsCreatingCustomer(false)} className="flex-1 border border-[var(--line)] py-3 font-bold uppercase text-xs hover:bg-white transition-colors text-center">Cancelar</button>
                     <button disabled={!newCustomer.first_name || !newCustomer.last_name} onClick={handleCreateCustomer} className="flex-1 bg-[var(--primary)] text-white py-3 font-bold uppercase text-xs hover:opacity-90 transition-opacity disabled:opacity-30">Guardar</button>
@@ -967,7 +1018,7 @@ function AnalyticsView({ analytics, startDate, setStartDate, endDate, setEndDate
               <option value="cantidad">Cantidad Unit. (#)</option>
             </select>
           </div>
-          
+
           <div className="flex gap-4 items-center bg-white p-3 rounded-xl border border-[var(--line)] shadow-sm">
             <div className="flex flex-col">
               <label className="text-[10px] font-bold uppercase text-gray-400 mb-1">Desde</label>
@@ -1021,13 +1072,13 @@ function AnalyticsView({ analytics, startDate, setStartDate, endDate, setEndDate
           </div>
           <FileMinus size={32} className="opacity-20 text-amber-700" />
         </div>
-        
+
         {analytics.summary.total_expenses > 0 && (
           <div className="col-span-3 p-6 border border-[var(--line)] bg-red-50 rounded-2xl shadow-sm flex items-center justify-between border-l-4 border-l-red-500">
             <div>
               <div className="text-[10px] font-bold uppercase text-red-500 tracking-widest mb-1">Descuentos por Gastos Registrados</div>
               <div className="text-2xl font-mono font-bold text-red-700">
-                Total Restado: ${analytics.summary.total_expenses?.toLocaleString()} 
+                Total Restado: ${analytics.summary.total_expenses?.toLocaleString()}
                 <span className="text-sm ml-4 opacity-70">(Efectivo: ${analytics.summary.cash_expenses?.toLocaleString() || 0} | Tarjeta: ${analytics.summary.card_expenses?.toLocaleString() || 0})</span>
               </div>
             </div>
@@ -1191,22 +1242,17 @@ function EditProductModal({ product, onClose, onSuccess }: any) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch(`/api/products/${product.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    try {
+      await api.updateProduct(product.id, {
         ...formData,
         sale_price: parseFloat(formData.sale_price),
         cost: parseFloat(formData.cost),
         new_stock: formData.total_stock
-      })
-    });
-
-    if (res.ok) {
+      });
       toast.success('Producto actualizado');
       onSuccess();
-    } else {
-      toast.error('Error al actualizar');
+    } catch (e: any) {
+      toast.error('Error al actualizar: ' + e.message);
     }
   };
 
@@ -1214,15 +1260,12 @@ function EditProductModal({ product, onClose, onSuccess }: any) {
     if (!window.confirm(`¿Está seguro que desea eliminar permanentemente el producto ${product.name}?`)) {
       return;
     }
-    const res = await fetch(`/api/products/${product.id}`, {
-      method: 'DELETE'
-    });
-    if (res.ok) {
+    try {
+      await api.deleteProduct(product.id);
       toast.success('Producto eliminado');
       onSuccess();
-    } else {
-      const data = await res.json();
-      toast.error(data.error || 'Error al eliminar');
+    } catch (e: any) {
+      toast.error(e.message || 'Error al eliminar');
     }
   };
 
@@ -1366,17 +1409,12 @@ function ImportModal({ onClose, onSuccess }: any) {
           cost: parseFloat(row.COSTO_INICIAL || 0)
         })).filter(p => p.id && p.name);
 
-        const res = await fetch('/api/products/bulk', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ products })
-        });
-
-        if (res.ok) {
+        try {
+          await api.importBulkProducts(products);
           toast.success('Inventario importado correctamente');
           onSuccess();
-        } else {
-          toast.error('Error al importar');
+        } catch (e: any) {
+          toast.error('Error al importar: ' + e.message);
         }
       } catch (err) {
         toast.error('Archivo Excel inválido');
@@ -1442,22 +1480,17 @@ function ExpressModal({ initialId, onClose, onSuccess }: any) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch('/api/products', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    try {
+      await api.createProduct({
         ...formData,
         sale_price: parseFloat(formData.sale_price),
         initial_stock: parseInt(formData.initial_stock),
         cost: parseFloat(formData.cost)
-      })
-    });
-
-    if (res.ok) {
+      });
       toast.success('Producto creado');
       onSuccess();
-    } else {
-      toast.error('Error al crear producto');
+    } catch (e: any) {
+      toast.error('Error al crear producto: ' + e.message);
     }
   };
 
@@ -1566,9 +1599,11 @@ function HistoryView({ onRefresh }: { onRefresh: () => void }) {
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
 
   const fetchHistory = async () => {
-    const res = await fetch(`/api/history?startDate=${startDate}T00:00:00&endDate=${endDate}T23:59:59`);
-    if (res.ok) {
-      setItems(await res.json());
+    try {
+      const data = await api.fetchHistory(startDate, endDate);
+      setItems(data);
+    } catch (e: any) {
+      toast.error('Error al cargar historial: ' + e.message);
     }
   };
 
@@ -1579,16 +1614,17 @@ function HistoryView({ onRefresh }: { onRefresh: () => void }) {
   const handleVoid = async (id: string, type: string) => {
     if (!window.confirm("¿Estás seguro de anular esta operación? Esta acción no se puede deshacer.")) return;
 
-    const endpoint = type === 'sale' ? `/api/sales/void/${id}` : `/api/receivables/pay/void/${id}`;
-    const res = await fetch(endpoint, { method: 'POST' });
-    
-    if (res.ok) {
+    try {
+      if (type === 'sale') {
+        await api.voidSale(id);
+      } else {
+        await api.voidPayment(id);
+      }
       toast.success("Operación anulada con éxito");
       fetchHistory();
       onRefresh();
-    } else {
-      const error = await res.json();
-      toast.error(error.error || "Error al anular operación");
+    } catch (e: any) {
+      toast.error(e.message || "Error al anular operación");
     }
   };
 
@@ -1620,7 +1656,7 @@ function HistoryView({ onRefresh }: { onRefresh: () => void }) {
                 <div className="text-xs font-mono text-gray-400 mb-1">{item.id}</div>
                 <div className="font-bold flex items-center gap-2 uppercase">
                   {new Date(item.created_at).toLocaleString()}
-                  {item.method === 'cash' ? <Banknote size={14} className="text-green-600"/> : item.method === 'card' ? <CreditCard size={14} className="text-blue-600"/> : <FileText size={14} className="text-amber-600"/>}
+                  {item.method === 'cash' ? <Banknote size={14} className="text-green-600" /> : item.method === 'card' ? <CreditCard size={14} className="text-blue-600" /> : <FileText size={14} className="text-amber-600" />}
                   <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
                     {item.type === 'sale' ? (item.method === 'cuenta_por_cobrar' ? 'Venta Fiada' : 'Venta') : 'Abono Recibido'}
                   </span>
@@ -1650,7 +1686,7 @@ function HistoryView({ onRefresh }: { onRefresh: () => void }) {
 
             {item.status === 'completed' && (
               <div className="flex justify-end pt-4 border-t border-[var(--line)]">
-                <button 
+                <button
                   onClick={() => handleVoid(item.id, item.type)}
                   className="px-4 py-2 bg-red-50 text-red-600 font-bold uppercase text-xs rounded hover:bg-red-600 hover:text-white transition-colors"
                 >
@@ -1768,9 +1804,9 @@ function ExpensesView({ onRefresh }: { onRefresh: () => void }) {
               <div className="font-bold">{exp.description}</div>
               <div>
                 {exp.method === 'cash' ? (
-                  <span className="flex items-center gap-1 text-green-700 text-xs font-bold"><Banknote size={12}/> EFECTIVO</span>
+                  <span className="flex items-center gap-1 text-green-700 text-xs font-bold"><Banknote size={12} /> EFECTIVO</span>
                 ) : (
-                  <span className="flex items-center gap-1 text-blue-700 text-xs font-bold"><CreditCard size={12}/> TARJETA</span>
+                  <span className="flex items-center gap-1 text-blue-700 text-xs font-bold"><CreditCard size={12} /> TARJETA</span>
                 )}
               </div>
               <div className="text-right font-mono font-bold text-red-600">-${exp.amount.toLocaleString()}</div>
@@ -1836,11 +1872,11 @@ function ReceivablesView({ onRefresh }: { onRefresh: () => void }) {
       <div className="w-1/3 border-r border-[var(--line)] bg-white p-6 flex flex-col">
         <h2 className="text-2xl font-bold tracking-tight text-[var(--ink)] mb-1">Por Cobrar</h2>
         <p className="text-sm text-gray-500 mb-6">Listado de clientes con deudas.</p>
-        
+
         <div className="space-y-3 flex-1 overflow-y-auto pr-2">
           {debtors.map(d => (
-            <button 
-              key={d.id} 
+            <button
+              key={d.id}
               onClick={() => loadDebtorHistory(d.id)}
               className={cn("w-full p-4 border rounded-xl text-left transition-all", selectedDebtor?.id === d.id ? "border-[var(--primary)] bg-blue-50 ring-2 ring-[var(--primary)]/20" : "border-[var(--line)] hover:border-gray-300")}
             >
@@ -1853,7 +1889,7 @@ function ReceivablesView({ onRefresh }: { onRefresh: () => void }) {
             </button>
           ))}
           {debtors.length === 0 && (
-             <div className="text-center p-8 text-gray-400 italic text-sm border-2 border-dashed border-[var(--line)] rounded-xl">No hay deudas pendientes.</div>
+            <div className="text-center p-8 text-gray-400 italic text-sm border-2 border-dashed border-[var(--line)] rounded-xl">No hay deudas pendientes.</div>
           )}
         </div>
       </div>
@@ -1869,15 +1905,15 @@ function ReceivablesView({ onRefresh }: { onRefresh: () => void }) {
               </div>
               <form onSubmit={handlePayment} className="flex gap-3 items-end">
                 <div>
-                   <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Monto Abono</label>
-                   <input type="number" required min="1" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} className="w-32 bg-gray-50 border border-[var(--line)] p-2 text-sm font-bold rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20" />
+                  <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Monto Abono</label>
+                  <input type="number" required min="1" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} className="w-32 bg-gray-50 border border-[var(--line)] p-2 text-sm font-bold rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20" />
                 </div>
                 <div>
-                   <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Medio</label>
-                   <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} className="w-32 bg-gray-50 border border-[var(--line)] p-2 text-sm rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20">
-                     <option value="cash">Efectivo</option>
-                     <option value="card">Tarjeta</option>
-                   </select>
+                  <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Medio</label>
+                  <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} className="w-32 bg-gray-50 border border-[var(--line)] p-2 text-sm rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20">
+                    <option value="cash">Efectivo</option>
+                    <option value="card">Tarjeta</option>
+                  </select>
                 </div>
                 <button type="submit" className="bg-green-600 hover:bg-green-700 text-white font-bold uppercase text-xs px-4 py-2.5 rounded-lg transition-all h-[38px] flex items-center">
                   Registrar Abono
@@ -1886,24 +1922,24 @@ function ReceivablesView({ onRefresh }: { onRefresh: () => void }) {
             </div>
 
             <div className="bg-white border border-[var(--line)] rounded-2xl flex-1 overflow-hidden flex flex-col shadow-sm">
-               <div className="p-4 border-b border-[var(--line)] bg-[var(--ink)] text-[var(--bg)]">
-                 <h4 className="font-bold uppercase text-sm tracking-widest">Historial de Movimientos</h4>
-               </div>
-               <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                 {history.map((item, i) => (
-                   <div key={i} className={cn("p-4 border rounded-xl flex justify-between items-center", item.type === 'debt' ? "border-red-200 bg-red-50" : "border-green-200 bg-green-50")}>
-                     <div>
-                       <div className={cn("text-xs font-bold uppercase mb-1", item.type === 'debt' ? "text-red-700" : "text-green-700")}>
-                         {item.type === 'debt' ? `Venta Fiada (Ticket #${item.ticket_id})` : `Abono Realizado (${item.method === 'cash' ? 'Efectivo' : 'Tarjeta'})`}
-                       </div>
-                       <div className="text-xs text-gray-500 font-mono">{new Date(item.date).toLocaleString()}</div>
-                     </div>
-                     <div className={cn("font-bold font-mono text-lg", item.type === 'debt' ? "text-red-600" : "text-green-600")}>
-                       {item.type === 'debt' ? '-' : '+'}${item.amount.toLocaleString()}
-                     </div>
-                   </div>
-                 ))}
-               </div>
+              <div className="p-4 border-b border-[var(--line)] bg-[var(--ink)] text-[var(--bg)]">
+                <h4 className="font-bold uppercase text-sm tracking-widest">Historial de Movimientos</h4>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                {history.map((item, i) => (
+                  <div key={i} className={cn("p-4 border rounded-xl flex justify-between items-center", item.type === 'debt' ? "border-red-200 bg-red-50" : "border-green-200 bg-green-50")}>
+                    <div>
+                      <div className={cn("text-xs font-bold uppercase mb-1", item.type === 'debt' ? "text-red-700" : "text-green-700")}>
+                        {item.type === 'debt' ? `Venta Fiada (Ticket #${item.ticket_id})` : `Abono Realizado (${item.method === 'cash' ? 'Efectivo' : 'Tarjeta'})`}
+                      </div>
+                      <div className="text-xs text-gray-500 font-mono">{new Date(item.date).toLocaleString()}</div>
+                    </div>
+                    <div className={cn("font-bold font-mono text-lg", item.type === 'debt' ? "text-red-600" : "text-green-600")}>
+                      {item.type === 'debt' ? '-' : '+'}${item.amount.toLocaleString()}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </>
         ) : (
