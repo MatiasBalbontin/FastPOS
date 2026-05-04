@@ -26,10 +26,17 @@ export const api = {
 
   async createProduct(product: any) {
     const { id, name, type, sale_price, initial_stock, cost } = product;
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) throw new Error('No autenticado');
     
     // Create product
     const { error: pError } = await supabase.from('products').insert({
-      id, name: name.toUpperCase(), type: type.toUpperCase(), sale_price
+      id,
+      user_id: user.id,
+      name: name.toUpperCase(),
+      type: type.toUpperCase(),
+      sale_price
     });
     if (pError) throw pError;
 
@@ -37,6 +44,7 @@ export const api = {
     if (initial_stock > 0) {
       const { error: bError } = await supabase.from('batches').insert({
         product_id: id,
+        user_id: user.id,
         quantity: initial_stock,
         initial_quantity: initial_stock,
         cost: cost || 0
@@ -277,8 +285,15 @@ export const api = {
 
   async addExpense(expense: any) {
     const { description, amount, method } = expense;
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) throw new Error('No autenticado');
+
     const { error } = await supabase.from('expenses').insert({
-      description: description.toUpperCase(), amount, method
+      user_id: user.id,
+      description: description.toUpperCase(),
+      amount,
+      method
     });
     if (error) throw error;
   },
@@ -292,8 +307,15 @@ export const api = {
 
   async createCustomer(customer: any) {
     const { rut, first_name, last_name } = customer;
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) throw new Error('No autenticado');
+
     const { data, error } = await supabase.from('customers').insert({
-      rut, first_name: first_name.toUpperCase(), last_name: last_name.toUpperCase()
+      user_id: user.id,
+      rut,
+      first_name: first_name.toUpperCase(),
+      last_name: last_name.toUpperCase()
     }).select().single();
     if (error) throw error;
     return data.id;
@@ -339,15 +361,22 @@ export const api = {
 
     const debts = Array.from(ticketMap.values());
     const payments = paymentsRes.data?.map(p => ({ ticket_id: p.id, date: p.created_at, amount: p.amount, type: 'payment', method: p.method, status: p.status })) || [];
-
     const history = [...debts, ...payments].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     return { customer: customerRes.data, history };
   },
 
   async payReceivable(customer_id: number, amount: number, method: string) {
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) throw new Error('No autenticado');
+
     const { error } = await supabase.from('customer_payments').insert({
-      customer_id, amount, method, status: 'completed'
+      customer_id,
+      user_id: user.id,
+      amount,
+      method,
+      status: 'completed'
     });
     if (error) throw error;
   },

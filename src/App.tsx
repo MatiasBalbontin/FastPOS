@@ -65,7 +65,8 @@ interface Analytics {
   categoryAnalysis: { type: string; volume: number; revenue: number }[];
   summary: {
     total_revenue: number; total_cost: number; total_profit: number;
-    cash_revenue: number; card_revenue: number;
+    cash_revenue_sales: number; card_revenue_sales: number; receivables_revenue: number;
+    cash_revenue: number; card_revenue: number; total_receivables: number;
     total_expenses: number; cash_expenses: number; card_expenses: number;
     total_inventory_value: number;
   };
