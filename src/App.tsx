@@ -28,7 +28,8 @@ import {
   History,
   FileText,
   Loader2,
-  LogOut
+  LogOut,
+  Users
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import { supabase } from './lib/supabase';
@@ -90,11 +91,13 @@ const SidebarItem = ({ icon: Icon, label, active, onClick }: any) => (
   </button>
 );
 
+import { useAuth } from './contexts/AuthContext';
+import { UsersView } from './components/UsersView';
+
 export default function App() {
-  const [session, setSession] = useState<any>(null);
-  const [loadingSession, setLoadingSession] = useState(true);
+  const { session, user, tenantId, role, loading: loadingSession, signOut: handleLogout } = useAuth();
   
-  const [view, setView] = useState<'sales' | 'inventory' | 'analytics' | 'history' | 'expenses' | 'receivables'>('sales');
+  const [view, setView] = useState<'sales' | 'inventory' | 'analytics' | 'history' | 'expenses' | 'receivables' | 'users'>('sales');
   const [products, setProducts] = useState<Product[]>([]);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [startDate, setStartDate] = useState(new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0]);
@@ -104,21 +107,6 @@ export default function App() {
   const [lowStockThreshold, setLowStockThreshold] = useState(5);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoadingSession(false);
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
 
   const fetchProducts = async () => {
     if (!session) return;
@@ -206,10 +194,6 @@ export default function App() {
     return <Landing onSession={() => {}} />;
   }
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-  };
-
   return (
     <div className="flex h-screen overflow-hidden">
       <Toaster position="top-right" theme="light" />
@@ -241,12 +225,14 @@ export default function App() {
             active={view === 'inventory'}
             onClick={() => setView('inventory')}
           />
-          <SidebarItem
-            icon={BarChart3}
-            label="Reportes"
-            active={view === 'analytics'}
-            onClick={() => setView('analytics')}
-          />
+          {role === 'ADMIN' && (
+            <SidebarItem
+              icon={BarChart3}
+              label="Reportes"
+              active={view === 'analytics'}
+              onClick={() => setView('analytics')}
+            />
+          )}
           <SidebarItem
             icon={History}
             label="Historial"
@@ -265,6 +251,14 @@ export default function App() {
             active={view === 'expenses'}
             onClick={() => setView('expenses')}
           />
+          {role === 'ADMIN' && (
+            <SidebarItem
+              icon={Users}
+              label="Usuarios"
+              active={view === 'users'}
+              onClick={() => setView('users')}
+            />
+          )}
         </nav>
 
         <div className="p-4 border-t border-[var(--line)] space-y-2">
@@ -285,6 +279,7 @@ export default function App() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-auto relative bg-[#F3F4F6]">
+        {view === 'users' && <UsersView />}
         {view === 'sales' && (
           <SalesView
             searchInputRef={searchInputRef}
@@ -1248,6 +1243,7 @@ function PinModal({ onSuccess, onClose }: any) {
 }
 
 function EditProductModal({ product, onClose, onSuccess }: any) {
+  const { role } = useAuth();
   const [formData, setFormData] = useState({
     name: product.name,
     type: product.type,
@@ -1368,13 +1364,15 @@ function EditProductModal({ product, onClose, onSuccess }: any) {
                 Cancelar
               </button>
             </div>
-            <button
-              type="button"
-              onClick={handleDelete}
-              className="w-full flex items-center justify-center gap-2 text-red-500 border border-red-200 py-2.5 rounded-xl font-bold uppercase text-xs hover:bg-red-50 transition-colors bg-white mt-1"
-            >
-              <Trash2 size={16} /> Eliminar Producto
-            </button>
+            {role === 'ADMIN' && (
+              <button
+                type="button"
+                onClick={handleDelete}
+                className="w-full flex items-center justify-center gap-2 text-red-500 border border-red-200 py-2.5 rounded-xl font-bold uppercase text-xs hover:bg-red-50 transition-colors bg-white mt-1"
+              >
+                <Trash2 size={16} /> Eliminar Producto
+              </button>
+            )}
           </div>
         </form>
       </div>
