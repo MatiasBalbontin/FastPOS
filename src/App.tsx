@@ -187,6 +187,21 @@ export default function App() {
     );
   }
 
+  const isMissingEnvVars = !import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+  if (isMissingEnvVars) {
+    return (
+      <div className="min-h-screen bg-red-50 flex flex-col items-center justify-center p-8 text-center">
+        <AlertTriangle className="w-16 h-16 text-red-600 mb-4" />
+        <h1 className="text-2xl font-bold text-red-900 mb-2">Faltan Variables de Entorno en Vercel</h1>
+        <p className="text-red-700 max-w-md mt-4">
+          La aplicación se ha compilado correctamente, pero no puede conectarse a la base de datos.<br/><br/>
+          Para que funcione en producción, debes ir a Vercel {'>'} Project Settings {'>'} Environment Variables, y agregar <b>VITE_SUPABASE_URL</b> y <b>VITE_SUPABASE_ANON_KEY</b> con las credenciales de tu proyecto.
+        </p>
+      </div>
+    );
+  }
+
   if (!session) {
     return <Landing onSession={() => {}} />;
   }
