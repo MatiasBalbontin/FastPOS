@@ -29,7 +29,8 @@ import {
   FileText,
   Loader2,
   LogOut,
-  Users
+  Users,
+  Settings
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import { supabase } from './lib/supabase';
@@ -92,12 +93,12 @@ const SidebarItem = ({ icon: Icon, label, active, onClick }: any) => (
 );
 
 import { useAuth } from './contexts/AuthContext';
-import { UsersView } from './components/UsersView';
+import { SettingsView } from './components/SettingsView';
 
 export default function App() {
   const { session, user, tenantId, role, loading: loadingSession, signOut: handleLogout } = useAuth();
   
-  const [view, setView] = useState<'sales' | 'inventory' | 'analytics' | 'history' | 'expenses' | 'receivables' | 'users'>('sales');
+  const [view, setView] = useState<'sales' | 'inventory' | 'analytics' | 'history' | 'expenses' | 'receivables' | 'settings'>('sales');
   const [products, setProducts] = useState<Product[]>([]);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [startDate, setStartDate] = useState(new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0]);
@@ -253,10 +254,10 @@ export default function App() {
           />
           {role === 'ADMIN' && (
             <SidebarItem
-              icon={Users}
-              label="Usuarios"
-              active={view === 'users'}
-              onClick={() => setView('users')}
+              icon={Settings}
+              label="Ajustes"
+              active={view === 'settings'}
+              onClick={() => setView('settings')}
             />
           )}
         </nav>
@@ -279,7 +280,7 @@ export default function App() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-auto relative bg-[#F3F4F6]">
-        {view === 'users' && <UsersView />}
+        {view === 'settings' && <SettingsView />}
         {view === 'sales' && (
           <SalesView
             searchInputRef={searchInputRef}

@@ -62,10 +62,43 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setRole(roleName);
         api.setTenantId(data.tenant_id); // Inject to API
       } else {
-        console.error("Error fetching tenant_user mapping:", error);
-        setTenantId(null);
-        setRole(null);
-        api.setTenantId(null);
+        // No tenant_user found. It's a new sign up.
+        // 1. Check invites
+        const { data: invite } = await supabase.from('invites').select('*').eq('email', currentSession.user.email).maybeSingle();
+        
+        if (invite) {
+          // Join existing tenant
+          await supabase.from('tenant_users').insert({
+            tenant_id: invite.tenant_id,
+            user_id: currentSession.user.id,
+            role_id: invite.role_id
+          });
+          await supabase.from('invites').delete().eq('id', invite.id);
+          
+          // Re-fetch mapping
+          const { data: newTenantUser } = await supabase.from('tenant_users').select('tenant_id, roles(name)').eq('user_id', currentSession.user.id).single();
+          if (newTenantUser) {
+            setTenantId(newTenantUser.tenant_id);
+            setRole(newTenantUser.roles ? (Array.isArray(newTenantUser.roles) ? newTenantUser.roles[0]?.name : (newTenantUser.roles as any).name) : null);
+            api.setTenantId(newTenantUser.tenant_id);
+          }
+        } else {
+          // 2. Create new tenant (Owner)
+          const { data: newTenant } = await supabase.from('tenants').insert({ name: 'Mi Empresa' }).select().single();
+          const { data: adminRole } = await supabase.from('roles').select('id, name').eq('name', 'ADMIN').single();
+          
+          if (newTenant && adminRole) {
+            await supabase.from('tenant_users').insert({
+              tenant_id: newTenant.id,
+              user_id: currentSession.user.id,
+              role_id: adminRole.id
+            });
+            
+            setTenantId(newTenant.id);
+            setRole(adminRole.name);
+            api.setTenantId(newTenant.id);
+          }
+        }
       }
     } else {
       setTenantId(null);
