@@ -58,8 +58,23 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
       if (data && !error) {
         setTenantId(data.tenant_id);
-        const roleName = data.roles ? (Array.isArray(data.roles) ? data.roles[0]?.name : (data.roles as any).name) : null;
-        setRole(roleName);
+        let roleName = data.roles ? (Array.isArray(data.roles) ? data.roles[0]?.name : (data.roles as any).name) : null;
+        
+        // Auto-fix: If an existing user has no role, make them ADMIN
+        if (!roleName) {
+           console.log("Existing user has no role. Assigning ADMIN automatically.");
+           let { data: adminRole } = await supabase.from('roles').select('id, name').ilike('name', 'ADMIN').maybeSingle();
+           if (!adminRole) {
+             const { data: newRole } = await supabase.from('roles').insert({ name: 'ADMIN' }).select('id, name').single();
+             adminRole = newRole;
+           }
+           if (adminRole) {
+             await supabase.from('tenant_users').update({ role_id: adminRole.id }).eq('user_id', currentSession.user.id);
+             roleName = adminRole.name;
+           }
+        }
+        
+        setRole(roleName ? roleName.toUpperCase() : null);
         api.setTenantId(data.tenant_id); // Inject to API
       } else {
         // No tenant_user found. It's a new sign up.
