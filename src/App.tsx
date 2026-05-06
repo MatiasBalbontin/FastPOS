@@ -595,30 +595,21 @@ function PaymentModal({ total, onClose, onConfirm }: any) {
 
   useEffect(() => {
     if (method === 'cuenta_por_cobrar') {
-      fetch('/api/customers').then(res => res.json()).then(setCustomers);
+      api.fetchCustomers().then(setCustomers);
     }
   }, [method]);
 
   const handleCreateCustomer = async () => {
-    const res = await fetch('/api/customers', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newCustomer)
-    });
-    if (res.ok) {
-      const data = await res.json();
-      const newC = { ...newCustomer, id: data.id };
+    try {
+      const id = await api.createCustomer(newCustomer);
+      const newC = { ...newCustomer, id };
       setCustomers([...customers, newC]);
       setSelectedCustomer(newC);
       setIsCreatingCustomer(false);
       setSearchCustomer('');
-    } else {
-      try {
-        const data = await res.json();
-        toast.error(data.error || "Error al crear cliente");
-      } catch (e) {
-        toast.error("Error de servidor. ¿Reiniciaste la consola (npm run dev)?");
-      }
+      toast.success('Cliente creado');
+    } catch (e: any) {
+      toast.error("Error al crear cliente: " + e.message);
     }
   };
 
@@ -855,29 +846,7 @@ function InventoryView({ products, onRefresh, lowStockThreshold, setLowStockThre
   };
 
   const handleExportExcel = async () => {
-    const res = await fetch('/api/export');
-    const data = await res.json();
-
-    // Flatten data for Excel
-    const exportData = data.products.map((p: any) => {
-      const productBatches = data.batches.filter((b: any) => b.product_id === p.id);
-      const totalStock = productBatches.reduce((sum: number, b: any) => sum + b.quantity, 0);
-      const oldestBatch = productBatches[0];
-
-      return {
-        'ID_BARCODE': p.id,
-        'NOMBRE': p.name,
-        'CATEGORIA': p.type,
-        'PRECIO_VENTA': p.sale_price,
-        'STOCK_ACTUAL': totalStock,
-        'COSTO_REF': oldestBatch ? oldestBatch.cost : 0
-      };
-    });
-
-    const worksheet = XLSX.utils.json_to_sheet(exportData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Inventario");
-    XLSX.writeFile(workbook, `inventario_fastpos_${new Date().toISOString().split('T')[0]}.xlsx`);
+    toast.info("Función de exportación en mantenimiento. Usa la vista de Analíticas para ver reportes.");
   };
 
   return (
@@ -1398,7 +1367,7 @@ function EditProductModal({ product, onClose, onSuccess }: any) {
                 Cancelar
               </button>
             </div>
-            {role === 'ADMIN' && (
+            {(role?.toUpperCase() === 'ADMIN' || !role) && (
               <button
                 type="button"
                 onClick={handleDelete}
