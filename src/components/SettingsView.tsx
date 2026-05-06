@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'sonner';
 
 export const SettingsView = () => {
-  const { tenantId, role } = useAuth();
+  const { idEmpresa, role } = useAuth();
   const [users, setUsers] = useState<any[]>([]);
   const [invites, setInvites] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -21,15 +21,15 @@ export const SettingsView = () => {
   const [isInviting, setIsInviting] = useState(false);
 
   useEffect(() => {
-    if (tenantId) {
+    if (idEmpresa) {
       fetchTenant();
       fetchRoles();
       fetchUsersAndInvites();
     }
-  }, [tenantId]);
+  }, [idEmpresa]);
 
   const fetchTenant = async () => {
-    const { data } = await supabase.from('tenants').select('name').eq('id', tenantId).single();
+    const { data } = await supabase.from('empresas').select('name').eq('id', idEmpresa).single();
     if (data) setTenantName(data.name);
   };
 
@@ -45,20 +45,17 @@ export const SettingsView = () => {
     setLoading(true);
     // Fetch active users
     const { data: usersData } = await supabase
-      .from('tenant_users')
-      .select('id, user_id, roles(name, id)')
-      .eq('tenant_id', tenantId);
+      .from('usuarios_empresa')
+      .select('id, id_usuario, roles(name, id)')
+      .eq('id_empresa', idEmpresa);
 
-    // Fetch auth emails if possible (requires RPC usually, but we display user_id or handle it).
-    // In Supabase, the client can't fetch other users' emails from auth.users.
-    // For MVP, we'll just display their user_id.
     setUsers(usersData || []);
 
     // Fetch pending invites
     const { data: invitesData } = await supabase
       .from('invites')
       .select('*, roles(name)')
-      .eq('tenant_id', tenantId);
+      .eq('id_empresa', idEmpresa);
     
     setInvites(invitesData || []);
     setLoading(false);
@@ -68,7 +65,7 @@ export const SettingsView = () => {
     e.preventDefault();
     if (role !== 'ADMIN') return;
     setIsSavingTenant(true);
-    const { error } = await supabase.from('tenants').update({ name: tenantName }).eq('id', tenantId);
+    const { error } = await supabase.from('empresas').update({ name: tenantName }).eq('id', idEmpresa);
     if (error) toast.error('Error al actualizar nombre');
     else toast.success('Nombre actualizado');
     setIsSavingTenant(false);
@@ -81,7 +78,7 @@ export const SettingsView = () => {
     
     // Create invite
     const { error } = await supabase.from('invites').insert({
-      tenant_id: tenantId,
+      id_empresa: idEmpresa,
       email: email.toLowerCase(),
       role_id: selectedRole
     });
@@ -100,7 +97,7 @@ export const SettingsView = () => {
     if (role !== 'ADMIN') return;
     if (!confirm('¿Quitar acceso a este usuario?')) return;
     
-    const { error } = await supabase.from('tenant_users').delete().eq('id', id);
+    const { error } = await supabase.from('usuarios_empresa').delete().eq('id', id);
     if (error) toast.error('Error al remover usuario');
     else {
       toast.success('Usuario removido');
@@ -260,10 +257,10 @@ export const SettingsView = () => {
                         <div key={u.id} className="p-3 border border-[var(--line)] rounded-xl flex justify-between items-center hover:border-blue-200 transition-colors">
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold">
-                              {u.user_id.substring(0, 2).toUpperCase()}
+                              {u.id_usuario.substring(0, 2).toUpperCase()}
                             </div>
                             <div>
-                              <div className="font-bold text-sm text-slate-700 font-mono text-[10px]">{u.user_id}</div>
+                              <div className="font-bold text-sm text-slate-700 font-mono text-[10px]">{u.id_usuario}</div>
                               <div className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mt-0.5 px-2 py-0.5 bg-slate-100 rounded-full inline-block">
                                 ROL: {Array.isArray(u.roles) ? u.roles[0]?.name : u.roles?.name}
                               </div>

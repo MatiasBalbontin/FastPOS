@@ -36,6 +36,7 @@ import { Toaster, toast } from 'sonner';
 import { supabase } from './lib/supabase';
 import { api } from './lib/api';
 import { Landing } from './components/Landing';
+import { SubscriptionModal } from './components/SubscriptionModal';
 import {
   BarChart,
   Bar,
@@ -96,7 +97,7 @@ import { useAuth } from './contexts/AuthContext';
 import { SettingsView } from './components/SettingsView';
 
 export default function App() {
-  const { session, user, tenantId, role, loading: loadingSession, signOut: handleLogout } = useAuth();
+  const { session, user, idEmpresa, role, estadoSuscripcion, loading: loadingSession, signOut: handleLogout } = useAuth();
   
   const [view, setView] = useState<'sales' | 'inventory' | 'analytics' | 'history' | 'expenses' | 'receivables' | 'settings'>('sales');
   const [products, setProducts] = useState<Product[]>([]);
@@ -193,6 +194,10 @@ export default function App() {
 
   if (!session) {
     return <Landing onSession={() => {}} />;
+  }
+
+  if (estadoSuscripcion && estadoSuscripcion !== 'activo' && estadoSuscripcion !== 'active') {
+    return <SubscriptionModal />;
   }
 
   return (
