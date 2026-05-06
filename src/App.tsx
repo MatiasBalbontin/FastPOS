@@ -206,6 +206,28 @@ export default function App() {
     return <SubscriptionModal />;
   }
 
+  if (!idEmpresa && session) {
+    return (
+      <div className="h-screen w-screen flex flex-col items-center justify-center p-4 bg-slate-50">
+        <div className="bg-white p-8 rounded-2xl shadow-xl border border-red-100 max-w-md text-center">
+          <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Building size={32} />
+          </div>
+          <h2 className="text-xl font-bold text-slate-800 mb-2">Empresa no encontrada</h2>
+          <p className="text-slate-500 text-sm mb-6">
+            Tu usuario está autenticado pero no parece estar vinculado a ninguna empresa en la tabla <code className="bg-slate-100 px-1 py-0.5 rounded text-red-500">usuarios_empresa</code>.
+          </p>
+          <button 
+            onClick={handleLogout}
+            className="w-full bg-slate-800 text-white py-3 rounded-xl font-bold hover:bg-slate-900 transition-colors"
+          >
+            Cerrar sesión y reintentar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen overflow-hidden">
       <Toaster position="top-right" theme="light" />

@@ -78,8 +78,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
 
       } else {
-        console.log("No usuarios_empresa found for", currentSession.user.id);
-
+        console.error("Error: No se encontró vinculación en usuarios_empresa para el usuario:", currentSession.user.id);
+        if (error) console.error("Detalle técnico de Supabase:", error);
+        
         // 1. Verificar si tiene una invitación pendiente
         const { data: invite, error: inviteErr } = await supabase.from('invites').select('*').eq('email', currentSession.user.email).maybeSingle();
 
