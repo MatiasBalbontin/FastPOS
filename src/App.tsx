@@ -30,7 +30,8 @@ import {
   Loader2,
   LogOut,
   Users,
-  Settings
+  Settings,
+  Building
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import { supabase } from './lib/supabase';
@@ -55,12 +56,13 @@ import { cn } from './lib/utils';
 // --- Types ---
 interface Product {
   id: string;
+  barcode?: string;
   name: string;
   type: string;
   sale_price: number;
   total_stock: number;
   has_zero_cost: boolean;
-  cost?: number; // Added for display
+  cost?: number;
 }
 
 interface Analytics {
@@ -98,7 +100,7 @@ import { SettingsView } from './components/SettingsView';
 
 export default function App() {
   const { session, user, idEmpresa, role, estadoSuscripcion, pinSeguridad, loading: loadingSession, signOut: handleLogout } = useAuth();
-  
+
   const [view, setView] = useState<'sales' | 'inventory' | 'analytics' | 'history' | 'expenses' | 'receivables' | 'settings'>('sales');
   const [products, setProducts] = useState<Product[]>([]);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
@@ -176,14 +178,16 @@ export default function App() {
 
   if (loadingSession) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center">
-        <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
-        <p className="text-slate-500 font-medium animate-pulse">Conectando con Supabase...</p>
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <Loader2 className="w-6 h-6 text-slate-300 animate-spin" />
       </div>
     );
   }
 
-  const isMissingEnvVars = !import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const isMissingEnvVars = !import.meta.env.VITE_SUPABASE_URL || 
+    import.meta.env.VITE_SUPABASE_URL.includes('placeholder') ||
+    !import.meta.env.VITE_SUPABASE_ANON_KEY ||
+    import.meta.env.VITE_SUPABASE_ANON_KEY.includes('placeholder');
 
   if (isMissingEnvVars) {
     return (
@@ -191,7 +195,7 @@ export default function App() {
         <AlertTriangle className="w-16 h-16 text-red-600 mb-4" />
         <h1 className="text-2xl font-bold text-red-900 mb-2">Faltan Variables de Entorno en Vercel</h1>
         <p className="text-red-700 max-w-md mt-4">
-          La aplicación se ha compilado correctamente, pero no puede conectarse a la base de datos.<br/><br/>
+          La aplicación se ha compilado correctamente, pero no puede conectarse a la base de datos.<br /><br />
           Para que funcione en producción, debes ir a Vercel {'>'} Project Settings {'>'} Environment Variables, y agregar <b>VITE_SUPABASE_URL</b> y <b>VITE_SUPABASE_ANON_KEY</b> con las credenciales de tu proyecto.
         </p>
       </div>
@@ -199,7 +203,7 @@ export default function App() {
   }
 
   if (!session) {
-    return <Landing onSession={() => {}} />;
+    return <Landing onSession={() => window.location.reload()} />;
   }
 
   if (estadoSuscripcion && estadoSuscripcion !== 'activo' && estadoSuscripcion !== 'active') {
@@ -217,7 +221,7 @@ export default function App() {
           <p className="text-slate-500 text-sm mb-6">
             Tu usuario está autenticado pero no parece estar vinculado a ninguna empresa en la tabla <code className="bg-slate-100 px-1 py-0.5 rounded text-red-500">usuarios_empresa</code>.
           </p>
-          <button 
+          <button
             onClick={handleLogout}
             className="w-full bg-slate-800 text-white py-3 rounded-xl font-bold hover:bg-slate-900 transition-colors"
           >
@@ -285,7 +289,7 @@ export default function App() {
             active={view === 'expenses'}
             onClick={() => setView('expenses')}
           />
-          {role === 'ADMIN' && (
+          {(role?.toUpperCase() === 'ADMIN') && (
             <SidebarItem
               icon={Settings}
               label="Configuración"
@@ -364,7 +368,6 @@ export default function App() {
             }}
           />
         )}
-        {view === 'settings' && <SettingsView />}
       </main>
 
       {/* Express Creation Modal */}
@@ -389,9 +392,9 @@ function SalesView({ searchInputRef, onSale, products, onProductNotFound }: any)
   const [cart, setCart] = useState<{ product: Product; quantity: number }[]>([]);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
-  const filtered = products.filter((p: any) =>
-    p.id.toUpperCase().includes(query.toUpperCase()) ||
-    p.name.toUpperCase().includes(query.toUpperCase())
+  const filtered = products.filter((p: Product) => 
+    p.name.toLowerCase().includes(query.toLowerCase()) || 
+    p.barcode?.toLowerCase().includes(query.toLowerCase())
   ).slice(0, 5);
 
   const addToCart = (product: Product) => {
@@ -441,7 +444,9 @@ function SalesView({ searchInputRef, onSale, products, onProductNotFound }: any)
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (query) {
-      const exactMatch = products.find((p: any) => p.id === query.toUpperCase());
+      const exactMatch = products.find((p: Product) => 
+        p.barcode === query.toUpperCase() || p.id === query
+      );
       if (exactMatch) {
         addToCart(exactMatch);
       } else {
@@ -451,7 +456,11 @@ function SalesView({ searchInputRef, onSale, products, onProductNotFound }: any)
   };
 
   const handleFinishSale = async (method: string, customer_id?: string) => {
-    const items = cart.map(item => ({ product_id: item.product.id, quantity: item.quantity }));
+    const items = cart.map(item => ({ 
+      product_id: item.product.id, 
+      quantity: item.quantity,
+      sale_price: item.product.sale_price 
+    }));
     const success = await onSale(items, method, customer_id);
     if (success) {
       setCart([]);
@@ -832,10 +841,10 @@ function InventoryView({ products, onRefresh, lowStockThreshold, setLowStockThre
 
   const filtered = products.filter((p: any) =>
     p.name.toLowerCase().includes(search.toLowerCase()) ||
-    p.id.toLowerCase().includes(search.toLowerCase())
+    p.barcode?.toLowerCase().includes(search.toLowerCase())
   );
 
-  const exactMatch = products.find((p: any) => p.id === search);
+  const exactMatch = products.find((p: any) => p.barcode === search || p.id === search);
 
   const handleEditClick = (product: any) => {
     setShowPinModal(product);
@@ -934,7 +943,7 @@ function InventoryView({ products, onRefresh, lowStockThreshold, setLowStockThre
                 isLowStock && "bg-red-50/50",
                 exactMatch?.id === p.id && "bg-green-50"
               )}>
-                <div className="text-[10px] font-mono text-gray-400 truncate pr-2">{p.id}</div>
+                <div className="text-[10px] font-mono text-gray-400 truncate pr-2">{p.barcode || p.id}</div>
                 <div className="font-bold uppercase truncate flex items-center gap-2 text-[var(--ink)]">
                   {p.name}
                   {isLowStock && <AlertTriangle size={12} className="text-red-600 flex-shrink-0" />}
@@ -1251,6 +1260,7 @@ function EditProductModal({ product, onClose, onSuccess }: any) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [deletePin, setDeletePin] = useState('');
   const [formData, setFormData] = useState({
+    barcode: product.barcode || '',
     name: product.name,
     type: product.type,
     sale_price: product.sale_price.toString(),
@@ -1279,7 +1289,7 @@ function EditProductModal({ product, onClose, onSuccess }: any) {
       toast.error('PIN de seguridad incorrecto');
       return;
     }
-    
+
     try {
       await api.deleteProduct(product.id);
       toast.success('Producto eliminado correctamente');
@@ -1313,8 +1323,8 @@ function EditProductModal({ product, onClose, onSuccess }: any) {
 
             <div className="space-y-3">
               <label className="text-[10px] font-bold uppercase text-slate-400 block text-center">Ingresa el PIN de Seguridad</label>
-              <input 
-                type="password" 
+              <input
+                type="password"
                 maxLength={4}
                 autoFocus
                 value={deletePin}
@@ -1325,13 +1335,13 @@ function EditProductModal({ product, onClose, onSuccess }: any) {
             </div>
 
             <div className="flex gap-3">
-              <button 
+              <button
                 onClick={() => setIsDeleting(false)}
                 className="flex-1 border border-slate-200 py-3 rounded-xl font-bold uppercase text-xs hover:bg-slate-50 transition-colors"
               >
                 Cancelar
               </button>
-              <button 
+              <button
                 disabled={deletePin.length < 4}
                 onClick={handleDelete}
                 className="flex-1 bg-red-600 text-white py-3 rounded-xl font-bold uppercase text-xs hover:bg-red-700 transition-colors shadow-lg shadow-red-200 disabled:opacity-30"
@@ -1343,11 +1353,20 @@ function EditProductModal({ product, onClose, onSuccess }: any) {
         ) : (
           <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto">
             <div>
-              <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">ID / Barcode</label>
-              <input type="text" value={product.id} readOnly className="w-full bg-gray-50 border border-[var(--line)] p-2 font-mono text-sm text-gray-500 rounded-lg" />
+              <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">ID (Sistema)</label>
+              <input type="text" value={product.id} readOnly className="w-full bg-gray-50 border border-[var(--line)] p-2 font-mono text-xs text-gray-500 rounded-lg" />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2">
+                <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Cód. Barras</label>
+                <input
+                  type="text"
+                  value={formData.barcode}
+                  onChange={e => setFormData({ ...formData, barcode: e.target.value.toUpperCase() })}
+                  className="w-full bg-white border border-[var(--line)] p-2 font-mono text-sm rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20"
+                />
+              </div>
               <div className="col-span-2">
                 <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Nombre Producto</label>
                 <input
@@ -1537,7 +1556,7 @@ function ImportModal({ onClose, onSuccess }: any) {
 
 function ExpressModal({ initialId, onClose, onSuccess }: any) {
   const [formData, setFormData] = useState({
-    id: initialId,
+    barcode: initialId,
     name: '',
     type: '',
     sale_price: '',
@@ -1570,15 +1589,6 @@ function ExpressModal({ initialId, onClose, onSuccess }: any) {
         </div>
 
         <form onSubmit={handleSubmit} className="p-8 space-y-6">
-          <div>
-            <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Código Detectado</label>
-            <input
-              type="text"
-              value={formData.id}
-              readOnly
-              className="w-full bg-gray-50 border border-[var(--line)] p-2 font-mono text-sm text-gray-500 rounded-lg"
-            />
-          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
@@ -1776,9 +1786,11 @@ function ExpensesView({ onRefresh }: { onRefresh: () => void }) {
   const [formData, setFormData] = useState({ description: '', amount: '', method: 'cash' });
 
   const fetchExpenses = async () => {
-    const res = await fetch('/api/expenses');
-    if (res.ok) {
-      setExpenses(await res.json());
+    try {
+      const data = await api.fetchExpenses();
+      setExpenses(data);
+    } catch (e: any) {
+      toast.error('Error al cargar gastos: ' + e.message);
     }
   };
 
@@ -1790,24 +1802,18 @@ function ExpensesView({ onRefresh }: { onRefresh: () => void }) {
     e.preventDefault();
     if (!formData.description || !formData.amount) return;
 
-    const res = await fetch('/api/expenses', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    try {
+      await api.addExpense({
         description: formData.description,
         amount: parseFloat(formData.amount),
         method: formData.method
-      })
-    });
-
-    if (res.ok) {
-      toast.success("Gasto registrado");
+      });
+      toast.success('Gasto registrado');
       setFormData({ description: '', amount: '', method: 'cash' });
       fetchExpenses();
       onRefresh();
-    } else {
-      const err = await res.json();
-      toast.error(err.error || "Error al registrar gasto");
+    } catch (e: any) {
+      toast.error('Error al registrar: ' + e.message);
     }
   };
 
@@ -1896,40 +1902,40 @@ function ReceivablesView({ onRefresh }: { onRefresh: () => void }) {
   const [paymentMethod, setPaymentMethod] = useState('cash');
 
   const fetchDebtors = async () => {
-    const res = await fetch('/api/receivables');
-    if (res.ok) setDebtors(await res.json());
+    try {
+      const data = await api.fetchReceivables();
+      setDebtors(data);
+    } catch (e: any) {
+      console.error(e);
+    }
   };
 
   useEffect(() => {
     fetchDebtors();
   }, []);
 
-  const loadDebtorHistory = async (customer_id: string) => {
-    const res = await fetch(`/api/receivables/${customer_id}`);
-    if (res.ok) {
-      const data = await res.json();
+  const loadDebtorHistory = async (customer_id: number) => {
+    try {
+      const data = await api.fetchReceivableDetails(customer_id);
       setSelectedDebtor(data.customer);
       setHistory(data.history);
+    } catch (e: any) {
+      toast.error('Error al cargar historial: ' + e.message);
     }
   };
 
   const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!paymentAmount || parseFloat(paymentAmount) <= 0) return;
-    const res = await fetch(`/api/receivables/${selectedDebtor.id}/pay`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount: parseFloat(paymentAmount), method: paymentMethod })
-    });
-    if (res.ok) {
+    try {
+      await api.payReceivable(selectedDebtor.id, parseFloat(paymentAmount), paymentMethod);
       toast.success('Abono registrado');
       setPaymentAmount('');
       loadDebtorHistory(selectedDebtor.id);
       fetchDebtors();
       onRefresh();
-    } else {
-      const err = await res.json();
-      toast.error(err.error || 'Error al registrar abono');
+    } catch (e: any) {
+      toast.error(e.message || 'Error al registrar abono');
     }
   };
 

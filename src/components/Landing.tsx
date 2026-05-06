@@ -33,7 +33,6 @@ export function Landing({ onSession }: { onSession: () => void }) {
           password,
         });
         if (error) throw error;
-        toast.success('¡Bienvenido de vuelta!');
         onSession();
       } else {
         const { error } = await supabase.auth.signUp({
@@ -336,6 +335,8 @@ export function Landing({ onSession }: { onSession: () => void }) {
                 <label className="form-label">Correo electrónico</label>
                 <input 
                   type="email" 
+                  name="email"
+                  autocomplete="username"
                   required
                   value={email}
                   onChange={e => setEmail(e.target.value)}
@@ -349,6 +350,8 @@ export function Landing({ onSession }: { onSession: () => void }) {
                 <div style={{ position: 'relative' }}>
                   <input 
                     type={showPassword ? 'text' : 'password'} 
+                    name="password"
+                    autocomplete={isLogin ? "current-password" : "new-password"}
                     required
                     value={password}
                     onChange={e => setPassword(e.target.value)}

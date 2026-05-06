@@ -17,7 +17,8 @@ export const api = {
     const { data: products, error } = await supabase
       .from('products')
       .select('*, batches(quantity, cost, created_at)')
-      .eq('id_empresa', this._getIdEmpresa());
+      .eq('id_empresa', this._getIdEmpresa())
+      .order('name', { ascending: true });
     
     if (error) throw error;
 
@@ -36,24 +37,25 @@ export const api = {
   },
 
   async createProduct(product: any) {
-    const { id, name, type, sale_price, initial_stock, cost } = product;
+    const { barcode, name, type, sale_price, initial_stock, cost } = product;
     const { data: { user } } = await supabase.auth.getUser();
     
     if (!user) throw new Error('No autenticado');
     
-    const { error: pError } = await supabase.from('products').insert({
-      id,
+    const { data: newProd, error: pError } = await supabase.from('products').insert({
       id_empresa: this._getIdEmpresa(),
       user_id: user.id,
+      barcode: barcode?.toUpperCase(),
       name: name.toUpperCase(),
       type: type.toUpperCase(),
       sale_price
-    });
+    }).select().single();
+
     if (pError) throw pError;
 
-    if (initial_stock > 0) {
+    if (initial_stock > 0 && newProd) {
       const { error: bError } = await supabase.from('batches').insert({
-        product_id: id,
+        product_id: newProd.id,
         id_empresa: this._getIdEmpresa(),
         user_id: user.id,
         quantity: initial_stock,
@@ -65,22 +67,30 @@ export const api = {
   },
 
   async updateProduct(id: string, product: any) {
-    const { name, type, sale_price, new_stock, cost } = product;
+    const { barcode, name, type, sale_price, new_stock, cost } = product;
     
     const { error: pError } = await supabase.from('products')
-      .update({ name: name.toUpperCase(), type: type.toUpperCase(), sale_price })
+      .update({ 
+        barcode: barcode?.toUpperCase(),
+        name: name.toUpperCase(), 
+        type: type.toUpperCase(), 
+        sale_price 
+      })
       .eq('id', id)
       .eq('id_empresa', this._getIdEmpresa());
     if (pError) throw pError;
 
-    if (new_stock !== undefined) {
-      const { error: rpcError } = await supabase.rpc('update_product_stock', {
-        p_product_id: id,
-        p_new_stock: parseInt(new_stock, 10),
-        p_cost: cost || 0,
-        p_id_empresa: this._getIdEmpresa()
+    if (new_stock !== undefined && new_stock > 0) {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error: bError } = await supabase.from('batches').insert({
+        product_id: id,
+        id_empresa: this._getIdEmpresa(),
+        user_id: user?.id,
+        quantity: new_stock,
+        initial_quantity: new_stock,
+        cost: cost || 0
       });
-      if (rpcError) throw rpcError;
+      if (bError) throw bError;
     }
   },
 
@@ -103,7 +113,7 @@ export const api = {
     for (const item of products) {
       try {
         await this.createProduct({
-          id: item.id,
+          barcode: item.barcode || item.id, // Fallback a ID si no hay barcode
           name: item.name,
           type: item.type,
           sale_price: item.sale_price,
@@ -111,19 +121,22 @@ export const api = {
           cost: item.cost
         });
       } catch (e) {
-        console.error('Error importing product', item.id, e);
+        console.error('Error importing product', item.name, e);
       }
     }
   },
 
   // --- SALES ---
-  async processBulkSales(items: any[], method: string, customer_id?: number) {
+  async processBulkSales(items: any[], method: string, customer_id?: string) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('No autenticado');
 
+    const ticketId = `TK-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`.toUpperCase();
+
     const { data, error } = await supabase.rpc('process_bulk_sales', {
       p_items: items,
-      p_method: method,
+      p_ticket_id: ticketId,
+      p_payment_method: method,
       p_customer_id: customer_id || null,
       p_id_empresa: this._getIdEmpresa(),
       p_user_id: user.id
