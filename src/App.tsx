@@ -1246,6 +1246,7 @@ function PinModal({ onSuccess, onClose }: any) {
   );
 }
 
+function EditProductModal({ product, onClose, onSuccess }: any) {
   const { role, pinSeguridad } = useAuth();
   const [isDeleting, setIsDeleting] = useState(false);
   const [deletePin, setDeletePin] = useState('');
