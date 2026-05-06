@@ -117,14 +117,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   useEffect(() => {
-    // Interruptor de seguridad: Si en 6 segundos no hay respuesta de Supabase, forzamos el cierre del loader
-    const securityTimeout = setTimeout(() => {
-      if (loading) {
-        console.error("AuthContext: Supabase timeout (6s). Forzando carga.");
-        setLoading(false);
-      }
-    }, 6000);
-
     // Si no hay URL de Supabase válida, no intentamos conectar
     const url = import.meta.env.VITE_SUPABASE_URL;
     const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
