@@ -97,7 +97,7 @@ import { useAuth } from './contexts/AuthContext';
 import { SettingsView } from './components/SettingsView';
 
 export default function App() {
-  const { session, user, idEmpresa, role, estadoSuscripcion, loading: loadingSession, signOut: handleLogout } = useAuth();
+  const { session, user, idEmpresa, role, estadoSuscripcion, pinSeguridad, loading: loadingSession, signOut: handleLogout } = useAuth();
   
   const [view, setView] = useState<'sales' | 'inventory' | 'analytics' | 'history' | 'expenses' | 'receivables' | 'settings'>('sales');
   const [products, setProducts] = useState<Product[]>([]);
@@ -288,7 +288,7 @@ export default function App() {
           {role === 'ADMIN' && (
             <SidebarItem
               icon={Settings}
-              label="Ajustes"
+              label="Configuración"
               active={view === 'settings'}
               onClick={() => setView('settings')}
             />
@@ -364,6 +364,7 @@ export default function App() {
             }}
           />
         )}
+        {view === 'settings' && <SettingsView />}
       </main>
 
       {/* Express Creation Modal */}
@@ -1245,8 +1246,9 @@ function PinModal({ onSuccess, onClose }: any) {
   );
 }
 
-function EditProductModal({ product, onClose, onSuccess }: any) {
-  const { role } = useAuth();
+  const { role, pinSeguridad } = useAuth();
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deletePin, setDeletePin] = useState('');
   const [formData, setFormData] = useState({
     name: product.name,
     type: product.type,
@@ -1272,15 +1274,17 @@ function EditProductModal({ product, onClose, onSuccess }: any) {
   };
 
   const handleDelete = async () => {
-    if (!window.confirm(`¿Está seguro que desea eliminar permanentemente el producto ${product.name}?`)) {
+    if (deletePin !== pinSeguridad) {
+      toast.error('PIN de seguridad incorrecto');
       return;
     }
+    
     try {
       await api.deleteProduct(product.id);
-      toast.success('Producto eliminado');
+      toast.success('Producto eliminado correctamente');
       onSuccess();
     } catch (e: any) {
-      toast.error(e.message || 'Error al eliminar');
+      toast.error('No se pudo eliminar: ' + e.message);
     }
   };
 
@@ -1288,96 +1292,141 @@ function EditProductModal({ product, onClose, onSuccess }: any) {
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
       <div className="bg-white border border-[var(--line)] w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh]">
         <div className="p-6 border-b border-[var(--line)] flex justify-between items-center bg-[var(--primary)] text-white shrink-0">
-          <h3 className="font-bold uppercase tracking-widest text-sm">Editar Producto</h3>
+          <h3 className="font-bold uppercase tracking-widest text-sm">
+            {isDeleting ? 'Confirmar Eliminación' : 'Editar Producto'}
+          </h3>
           <button onClick={onClose}><X size={18} /></button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto">
-          <div>
-            <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">ID / Barcode</label>
-            <input type="text" value={product.id} readOnly className="w-full bg-gray-50 border border-[var(--line)] p-2 font-mono text-sm text-gray-500 rounded-lg" />
-          </div>
+        {isDeleting ? (
+          <div className="p-8 space-y-6 animate-in fade-in zoom-in-95">
+            <div className="text-center space-y-2">
+              <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Trash2 size={32} />
+              </div>
+              <h4 className="font-bold text-slate-800">¿Estás absolutamente seguro?</h4>
+              <p className="text-sm text-slate-500">
+                Esta acción eliminará permanentemente el producto <span className="font-bold text-slate-700">{product.name}</span> y todo su historial asociado.
+              </p>
+            </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2">
-              <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Nombre Producto</label>
-              <input
-                type="text"
-                required
-                value={formData.name}
-                onChange={e => setFormData({ ...formData, name: e.target.value.toUpperCase() })}
-                className="w-full bg-white border border-[var(--line)] p-2 text-sm rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20"
+            <div className="space-y-3">
+              <label className="text-[10px] font-bold uppercase text-slate-400 block text-center">Ingresa el PIN de Seguridad</label>
+              <input 
+                type="password" 
+                maxLength={4}
+                autoFocus
+                value={deletePin}
+                onChange={e => setDeletePin(e.target.value.replace(/\D/g, ''))}
+                className="w-full bg-slate-50 border-2 border-red-100 p-4 rounded-2xl text-center text-3xl tracking-[1em] font-mono outline-none focus:border-red-500 transition-colors"
+                placeholder="****"
               />
             </div>
-            <div className="col-span-2">
-              <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Tipo / Categoría</label>
-              <input
-                type="text"
-                required
-                value={formData.type}
-                onChange={e => setFormData({ ...formData, type: e.target.value.toUpperCase() })}
-                className="w-full bg-white border border-[var(--line)] p-2 text-sm rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20"
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Precio Venta</label>
-              <input
-                type="number"
-                required
-                value={formData.sale_price}
-                onChange={e => setFormData({ ...formData, sale_price: e.target.value })}
-                className="w-full bg-white border border-[var(--line)] p-2 text-sm font-bold rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20"
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Costo Unitario</label>
-              <input
-                type="number"
-                required
-                value={formData.cost}
-                onChange={e => setFormData({ ...formData, cost: e.target.value })}
-                className="w-full bg-white border border-[var(--line)] p-2 text-sm font-bold rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20"
-              />
-            </div>
-            <div className="col-span-2">
-              <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Stock Actual (Lotes combinados)</label>
-              <input
-                type="number"
-                required
-                value={formData.total_stock}
-                onChange={e => setFormData({ ...formData, total_stock: e.target.value })}
-                className="w-full bg-white border border-[var(--line)] p-2 text-sm font-bold rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20"
-              />
-            </div>
-          </div>
 
-          <div className="pt-2 flex flex-col gap-3">
             <div className="flex gap-3">
-              <button
-                type="submit"
-                className="flex-1 bg-[var(--primary)] text-white py-2.5 rounded-xl font-bold uppercase text-xs hover:bg-[var(--primary-dark)] shadow-md transition-all"
-              >
-                Guardar
-              </button>
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-6 border border-[var(--line)] py-2.5 rounded-xl font-bold uppercase text-xs hover:bg-gray-50 transition-colors"
+              <button 
+                onClick={() => setIsDeleting(false)}
+                className="flex-1 border border-slate-200 py-3 rounded-xl font-bold uppercase text-xs hover:bg-slate-50 transition-colors"
               >
                 Cancelar
               </button>
-            </div>
-            {(role?.toUpperCase() === 'ADMIN' || !role) && (
-              <button
-                type="button"
+              <button 
+                disabled={deletePin.length < 4}
                 onClick={handleDelete}
-                className="w-full flex items-center justify-center gap-2 text-red-500 border border-red-200 py-2.5 rounded-xl font-bold uppercase text-xs hover:bg-red-50 transition-colors bg-white mt-1"
+                className="flex-1 bg-red-600 text-white py-3 rounded-xl font-bold uppercase text-xs hover:bg-red-700 transition-colors shadow-lg shadow-red-200 disabled:opacity-30"
               >
-                <Trash2 size={16} /> Eliminar Producto
+                Confirmar Borrado
               </button>
-            )}
+            </div>
           </div>
-        </form>
+        ) : (
+          <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto">
+            <div>
+              <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">ID / Barcode</label>
+              <input type="text" value={product.id} readOnly className="w-full bg-gray-50 border border-[var(--line)] p-2 font-mono text-sm text-gray-500 rounded-lg" />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2">
+                <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Nombre Producto</label>
+                <input
+                  type="text"
+                  required
+                  value={formData.name}
+                  onChange={e => setFormData({ ...formData, name: e.target.value.toUpperCase() })}
+                  className="w-full bg-white border border-[var(--line)] p-2 text-sm rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20"
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Tipo / Categoría</label>
+                <input
+                  type="text"
+                  required
+                  value={formData.type}
+                  onChange={e => setFormData({ ...formData, type: e.target.value.toUpperCase() })}
+                  className="w-full bg-white border border-[var(--line)] p-2 text-sm rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Precio Venta</label>
+                <input
+                  type="number"
+                  required
+                  value={formData.sale_price}
+                  onChange={e => setFormData({ ...formData, sale_price: e.target.value })}
+                  className="w-full bg-white border border-[var(--line)] p-2 text-sm font-bold rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Costo Unitario</label>
+                <input
+                  type="number"
+                  required
+                  value={formData.cost}
+                  onChange={e => setFormData({ ...formData, cost: e.target.value })}
+                  className="w-full bg-white border border-[var(--line)] p-2 text-sm font-bold rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20"
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Stock Actual (Lotes combinados)</label>
+                <input
+                  type="number"
+                  required
+                  value={formData.total_stock}
+                  onChange={e => setFormData({ ...formData, total_stock: e.target.value })}
+                  className="w-full bg-white border border-[var(--line)] p-2 text-sm font-bold rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2 flex flex-col gap-3">
+              <div className="flex gap-3">
+                <button
+                  type="submit"
+                  className="flex-1 bg-[var(--primary)] text-white py-2.5 rounded-xl font-bold uppercase text-xs hover:bg-[var(--primary-dark)] shadow-md transition-all"
+                >
+                  Guardar
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-6 border border-[var(--line)] py-2.5 rounded-xl font-bold uppercase text-xs hover:bg-gray-50 transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+              {(role?.toUpperCase() === 'ADMIN' || !role) && (
+                <button
+                  type="button"
+                  onClick={() => setIsDeleting(true)}
+                  className="w-full flex items-center justify-center gap-2 text-red-500 border border-red-200 py-2.5 rounded-xl font-bold uppercase text-xs hover:bg-red-50 transition-colors bg-white mt-1"
+                >
+                  <Trash2 size={16} /> Eliminar Producto
+                </button>
+              )}
+            </div>
+          </form>
+        )}
       </div>
     </div>
   );

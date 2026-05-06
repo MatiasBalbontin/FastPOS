@@ -1,5 +1,16 @@
--- ACTUALIZACIÓN DE FUNCIONES RPC PARA SAAS
+-- ACTUALIZACIÓN DE FUNCIONES RPC PARA SAAS (CON ELIMINACIÓN PREVIA)
 -- Copia y pega esto en el SQL Editor de Supabase y dale a RUN.
+
+-- Eliminamos las funciones antiguas para evitar errores de tipo de retorno
+DROP FUNCTION IF EXISTS public.process_bulk_sales(jsonb,text,integer,uuid,uuid);
+DROP FUNCTION IF EXISTS public.update_product_stock(text,integer,numeric,uuid);
+DROP FUNCTION IF EXISTS public.void_sale(text,uuid);
+
+-- También eliminamos las versiones que usaban tenant_id por si acaso
+DROP FUNCTION IF EXISTS public.process_bulk_sales(jsonb,text,integer,uuid);
+DROP FUNCTION IF EXISTS public.update_product_stock(text,integer,numeric,uuid);
+DROP FUNCTION IF EXISTS public.void_sale(text,uuid);
+
 
 -- 1. Función para procesar ventas (Soporta id_empresa)
 CREATE OR REPLACE FUNCTION public.process_bulk_sales(

@@ -8,6 +8,7 @@ interface AuthContextType {
   idEmpresa: string | null;
   role: string | null;
   estadoSuscripcion: string | null;
+  pinSeguridad: string;
   loading: boolean;
   signOut: () => Promise<void>;
 }
@@ -30,6 +31,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [idEmpresa, setIdEmpresa] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);
   const [estadoSuscripcion, setEstadoSuscripcion] = useState<string | null>(null);
+  const [pinSeguridad, setPinSeguridad] = useState<string>('6767');
   const [loading, setLoading] = useState(true);
 
   const handleSession = async (currentSession: any) => {
@@ -69,12 +71,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         // Fetch subscription status
         const { data: empresaData } = await supabase
           .from('empresas')
-          .select('estado_suscripcion')
+          .select('estado_suscripcion, pin_seguridad')
           .eq('id', data.id_empresa)
           .single();
         
         if (empresaData) {
           setEstadoSuscripcion(empresaData.estado_suscripcion);
+          if (empresaData.pin_seguridad) setPinSeguridad(empresaData.pin_seguridad);
         }
 
       } else {
@@ -165,7 +168,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ session, user, idEmpresa, role, estadoSuscripcion, loading, signOut }}>
+    <AuthContext.Provider value={{ session, user, idEmpresa, role, estadoSuscripcion, pinSeguridad, loading, signOut }}>
       {children}
     </AuthContext.Provider>
   );
