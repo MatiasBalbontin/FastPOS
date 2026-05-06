@@ -35,10 +35,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   const handleSession = async (currentSession: any) => {
-    console.log("AuthContext: handleSession started for user:", currentSession?.user?.id);
     try {
       if (!currentSession) {
-        console.log("AuthContext: No session found");
         setSession(null);
         setUser(null);
         setIdEmpresa(null);
@@ -48,70 +46,38 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         return;
       }
 
-      setUser(currentSession.user);
+      // Validar sesión real
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        console.warn("AuthContext: Sesión inválida detectada.");
+        setSession(null);
+        return;
+      }
 
-      // Fetch tenant and role mapping from usuarios_empresa
-      console.log("AuthContext: Fetching user-company mapping...");
-      const { data, error } = await supabase
+      setUser(user);
+      setSession(currentSession);
+
+      // Buscar mapeo de empresa
+      const { data: mapping } = await supabase
         .from('usuarios_empresa')
-        .select('id_empresa, roles(name)')
-        .eq('id_usuario', currentSession.user.id)
+        .select('id_empresa, roles(name), empresas(estado_suscripcion, pin_seguridad)')
+        .eq('id_usuario', user.id)
         .maybeSingle();
 
-      if (data && !error) {
-        console.log("AuthContext: Mapping found:", data);
-        setIdEmpresa(data.id_empresa);
-        let roleName = data.roles ? (Array.isArray(data.roles) ? data.roles[0]?.name : (data.roles as any).name) : null;
-
-        if (!roleName) {
-          console.log("AuthContext: No role found, assigning ADMIN...");
-          const { data: r } = await supabase.from('roles').select('id').ilike('name', 'ADMIN').maybeSingle();
-          if (r) await supabase.from('usuarios_empresa').update({ role_id: r.id }).eq('id_usuario', currentSession.user.id);
-          roleName = 'ADMIN';
-        }
-
-        setRole(roleName.toUpperCase());
-        api.setIdEmpresa(data.id_empresa);
-
-        const { data: e } = await supabase.from('empresas').select('estado_suscripcion, pin_seguridad').eq('id', data.id_empresa).maybeSingle();
-        if (e) {
-          setEstadoSuscripcion(e.estado_suscripcion);
-          if (e.pin_seguridad) setPinSeguridad(e.pin_seguridad);
-        }
+      if (mapping) {
+        setIdEmpresa(mapping.id_empresa);
+        setRole((mapping.roles as any)?.name?.toUpperCase() || 'USER');
+        setEstadoSuscripcion(mapping.empresas?.estado_suscripcion || 'activo');
+        setPinSeguridad(mapping.empresas?.pin_seguridad || '6767');
+        api.setIdEmpresa(mapping.id_empresa);
       } else {
-        console.log("AuthContext: No mapping found. Checking invites or creating company...");
-        const { data: invite } = await supabase.from('invites').select('*').eq('email', currentSession.user.email).maybeSingle();
-
-        if (invite) {
-          console.log("AuthContext: Invite found, joining...");
-          await supabase.from('usuarios_empresa').insert({ id_empresa: invite.id_empresa, id_usuario: currentSession.user.id, role_id: invite.role_id });
-          await supabase.from('invites').delete().eq('id', invite.id);
-          // Refresh data
-          const { data: joined } = await supabase.from('usuarios_empresa').select('id_empresa, roles(name)').eq('id_usuario', currentSession.user.id).single();
-          if (joined) {
-            setIdEmpresa(joined.id_empresa);
-            setRole((joined.roles as any)?.name?.toUpperCase() || 'ADMIN');
-            api.setIdEmpresa(joined.id_empresa);
-          }
-        } else {
-          console.log("AuthContext: Creating new company...");
-          const { data: newE } = await supabase.from('empresas').insert({ name: 'Mi Empresa', estado_suscripcion: 'activo' }).select().single();
-          const { data: adm } = await supabase.from('roles').select('id').ilike('name', 'ADMIN').maybeSingle();
-          
-          if (newE && adm) {
-            await supabase.from('usuarios_empresa').insert({ id_empresa: newE.id, id_usuario: currentSession.user.id, role_id: adm.id });
-            setIdEmpresa(newE.id);
-            setRole('ADMIN');
-            setEstadoSuscripcion('activo');
-            api.setIdEmpresa(newE.id);
-          }
-        }
+        setIdEmpresa(null);
+        api.setIdEmpresa(null);
       }
-      setSession(currentSession);
     } catch (err) {
-      console.error("AuthContext: CRITICAL ERROR", err);
+      console.error("AuthContext: handleSession error", err);
+      setSession(null);
     } finally {
-      console.log("AuthContext: Loading finished.");
       setLoading(false);
     }
   };
