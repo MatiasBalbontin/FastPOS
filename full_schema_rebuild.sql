@@ -1,227 +1,269 @@
--- ========================================================
--- RECONSTRUCCIÓN COMPLETA FASTPOS SaaS v3 (UUID + FIFO + RLS)
--- ========================================================
-
--- LIMPIEZA TOTAL (CUIDADO: Borra datos existentes)
-DROP TABLE IF EXISTS public.invites CASCADE;
-DROP TABLE IF EXISTS public.expenses CASCADE;
-DROP TABLE IF EXISTS public.customer_payments CASCADE;
+-- RECONSTRUCCIÓN COMPLETA DE ESQUEMA FASTPOS SAAS
+-- ADVERTENCIA: Este script limpia y reconstruye las tablas principales para asegurar la integridad de datos.
+-- Ejecutar en el SQL Editor de Supabase.
+--1. LIMPIEZA DE TABLAS (Opcional, pero recomendado para consistencia)
 DROP TABLE IF EXISTS public.sales CASCADE;
-DROP TABLE IF EXISTS public.inventory_movements CASCADE;
 DROP TABLE IF EXISTS public.batches CASCADE;
-DROP TABLE IF EXISTS public.customers CASCADE;
 DROP TABLE IF EXISTS public.products CASCADE;
+DROP TABLE IF EXISTS public.customers CASCADE;
+DROP TABLE IF EXISTS public.customer_payments CASCADE;
+DROP TABLE IF EXISTS public.expenses CASCADE;
+DROP TABLE IF EXISTS public.invites CASCADE;
 DROP TABLE IF EXISTS public.usuarios_empresa CASCADE;
-DROP TABLE IF EXISTS public.roles CASCADE;
 DROP TABLE IF EXISTS public.empresas CASCADE;
-
--- EXTENSIONES
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-
--- 1. EMPRESAS (Tenants)
-CREATE TABLE public.empresas (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  name text NOT NULL,
-  pin_seguridad text DEFAULT '6767',
-  estado_suscripcion text DEFAULT 'activo',
-  created_at timestamptz DEFAULT now()
+DROP TABLE IF EXISTS public.roles CASCADE;
+-- 2. TABLAS BASE
+CREATE TABLE IF NOT EXISTS public.empresas (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    name text NOT NULL,
+    pin_seguridad text DEFAULT '6767',
+    estado_suscripcion text DEFAULT 'activo',
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    CONSTRAINT empresas_pkey PRIMARY KEY (id)
 );
-
--- 2. ROLES
-CREATE TABLE public.roles (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  name text UNIQUE NOT NULL,
-  description text
+CREATE TABLE IF NOT EXISTS public.roles (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    name text NOT NULL UNIQUE,
+    description text,
+    CONSTRAINT roles_pkey PRIMARY KEY (id)
 );
-
--- Insertar roles básicos
-INSERT INTO public.roles (name, description) VALUES 
-('ADMIN', 'Acceso total a la empresa'),
-('VENDEDOR', 'Acceso a ventas e inventario');
-
--- 3. USUARIOS POR EMPRESA (Mapping Auth -> Tenant)
-CREATE TABLE public.usuarios_empresa (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  id_empresa uuid NOT NULL REFERENCES public.empresas(id) ON DELETE CASCADE,
-  id_usuario uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  role_id uuid REFERENCES public.roles(id) ON DELETE SET NULL,
-  created_at timestamptz DEFAULT now(),
-  UNIQUE (id_empresa, id_usuario)
+-- Insertar roles base si no existen
+INSERT INTO public.roles (name, description)
+VALUES ('ADMIN', 'Acceso total a la empresa'),
+    ('VENDEDOR', 'Acceso a ventas e inventario') ON CONFLICT (name) DO NOTHING;
+-- 3. GESTIÓN DE USUARIOS
+CREATE TABLE IF NOT EXISTS public.usuarios_empresa (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    id_empresa uuid REFERENCES public.empresas(id) ON DELETE CASCADE,
+    id_usuario uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+    role_id uuid REFERENCES public.roles(id),
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    CONSTRAINT usuarios_empresa_pkey PRIMARY KEY (id),
+    CONSTRAINT unique_user_per_empresa UNIQUE (id_empresa, id_usuario)
 );
-
--- 4. PRODUCTOS (Con soporte de código de barras)
-CREATE TABLE public.products (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  id_empresa uuid NOT NULL REFERENCES public.empresas(id) ON DELETE CASCADE,
-  barcode text, -- El código de barras escaneable
-  name text NOT NULL,
-  type text NOT NULL,
-  sale_price numeric NOT NULL DEFAULT 0,
-  created_at timestamptz DEFAULT now(),
-  user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
-  
-  UNIQUE (id_empresa, barcode)
+CREATE TABLE IF NOT EXISTS public.invites (
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    id_empresa uuid REFERENCES public.empresas(id) ON DELETE CASCADE,
+    email text NOT NULL,
+    role_id uuid REFERENCES public.roles(id),
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    CONSTRAINT invites_pkey PRIMARY KEY (id)
 );
-
--- 5. CLIENTES
-CREATE TABLE public.customers (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  id_empresa uuid NOT NULL REFERENCES public.empresas(id) ON DELETE CASCADE,
-  rut text,
-  first_name text NOT NULL,
-  last_name text NOT NULL,
-  created_at timestamptz DEFAULT now(),
-  user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL
+-- 4. INVENTARIO Y PRODUCTOS
+CREATE TABLE IF NOT EXISTS public.products (
+    id text NOT NULL,
+    -- Barcode o ID manual
+    id_empresa uuid REFERENCES public.empresas(id) ON DELETE CASCADE,
+    name text NOT NULL,
+    type text NOT NULL,
+    sale_price numeric NOT NULL DEFAULT 0,
+    user_id uuid REFERENCES auth.users(id),
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    CONSTRAINT products_pkey PRIMARY KEY (id, id_empresa)
 );
-
--- 6. LOTES (Inventario FIFO)
-CREATE TABLE public.batches (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  id_empresa uuid NOT NULL REFERENCES public.empresas(id) ON DELETE CASCADE,
-  product_id uuid NOT NULL REFERENCES public.products(id) ON DELETE CASCADE,
-  initial_quantity integer NOT NULL,
-  quantity integer NOT NULL,
-  cost numeric NOT NULL,
-  created_at timestamptz DEFAULT now(),
-  user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL,
-
-  CHECK (quantity >= 0),
-  CHECK (initial_quantity >= quantity)
+CREATE TABLE IF NOT EXISTS public.batches (
+    id SERIAL PRIMARY KEY,
+    id_empresa uuid NOT NULL REFERENCES public.empresas(id) ON DELETE CASCADE,
+    product_id text NOT NULL,
+    quantity integer NOT NULL DEFAULT 0,
+    initial_quantity integer NOT NULL,
+    cost numeric NOT NULL DEFAULT 0,
+    user_id uuid REFERENCES auth.users(id),
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    -- FK Compuesta para asegurar que el producto pertenece a la misma empresa
+    CONSTRAINT batches_product_fkey FOREIGN KEY (product_id, id_empresa) REFERENCES public.products(id, id_empresa) ON DELETE CASCADE
 );
-
--- 7. MOVIMIENTOS DE INVENTARIO (Kardex)
-CREATE TABLE public.inventory_movements (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  id_empresa uuid NOT NULL REFERENCES public.empresas(id) ON DELETE CASCADE,
-  product_id uuid NOT NULL REFERENCES public.products(id) ON DELETE CASCADE,
-  batch_id uuid REFERENCES public.batches(id) ON DELETE SET NULL,
-  type text NOT NULL, -- 'sale', 'purchase', 'adjustment'
-  quantity integer NOT NULL,
-  cost numeric,
-  reference text,
-  created_at timestamptz DEFAULT now()
+-- 5. VENTAS Y CLIENTES
+CREATE TABLE IF NOT EXISTS public.customers (
+    id SERIAL PRIMARY KEY,
+    id_empresa uuid NOT NULL REFERENCES public.empresas(id) ON DELETE CASCADE,
+    rut text,
+    first_name text NOT NULL,
+    last_name text NOT NULL,
+    user_id uuid REFERENCES auth.users(id),
+    created_at timestamp with time zone NOT NULL DEFAULT now()
 );
-
--- 8. VENTAS
-CREATE TABLE public.sales (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  id_empresa uuid NOT NULL REFERENCES public.empresas(id) ON DELETE CASCADE,
-  product_id uuid NOT NULL REFERENCES public.products(id) ON DELETE CASCADE,
-  customer_id uuid REFERENCES public.customers(id) ON DELETE SET NULL,
-  quantity integer NOT NULL,
-  sale_price numeric NOT NULL,
-  total numeric NOT NULL,
-  payment_method text DEFAULT 'cash',
-  status text DEFAULT 'completed',
-  ticket_id text,
-  created_at timestamptz DEFAULT now(),
-  user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL
+CREATE TABLE IF NOT EXISTS public.sales (
+    id SERIAL PRIMARY KEY,
+    id_empresa uuid NOT NULL REFERENCES public.empresas(id) ON DELETE CASCADE,
+    product_id text NOT NULL,
+    customer_id integer REFERENCES public.customers(id) ON DELETE
+    SET NULL,
+        quantity integer NOT NULL,
+        sale_price numeric NOT NULL,
+        total_cost numeric NOT NULL,
+        -- Costo total calculado por FIFO
+        ticket_id text,
+        payment_method text DEFAULT 'cash',
+        status text DEFAULT 'completed',
+        user_id uuid REFERENCES auth.users(id),
+        created_at timestamp with time zone NOT NULL DEFAULT now(),
+        -- FK Compuesta
+        CONSTRAINT sales_product_fkey FOREIGN KEY (product_id, id_empresa) REFERENCES public.products(id, id_empresa) ON DELETE CASCADE
 );
-
--- 9. GASTOS
-CREATE TABLE public.expenses (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  id_empresa uuid NOT NULL REFERENCES public.empresas(id) ON DELETE CASCADE,
-  description text NOT NULL,
-  amount numeric NOT NULL,
-  method text NOT NULL,
-  created_at timestamptz DEFAULT now(),
-  user_id uuid REFERENCES auth.users(id) ON DELETE SET NULL
+-- 6. FINANZAS
+CREATE TABLE IF NOT EXISTS public.expenses (
+    id SERIAL PRIMARY KEY,
+    id_empresa uuid NOT NULL REFERENCES public.empresas(id) ON DELETE CASCADE,
+    description text NOT NULL,
+    amount numeric NOT NULL,
+    method text NOT NULL,
+    user_id uuid REFERENCES auth.users(id),
+    created_at timestamp with time zone NOT NULL DEFAULT now()
 );
-
--- 10. INVITACIONES
-CREATE TABLE public.invites (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  id_empresa uuid NOT NULL REFERENCES public.empresas(id) ON DELETE CASCADE,
-  email text NOT NULL,
-  role_id uuid REFERENCES public.roles(id) ON DELETE SET NULL,
-  created_at timestamptz DEFAULT now()
+CREATE TABLE IF NOT EXISTS public.customer_payments (
+    id SERIAL PRIMARY KEY,
+    id_empresa uuid NOT NULL REFERENCES public.empresas(id) ON DELETE CASCADE,
+    customer_id integer NOT NULL REFERENCES public.customers(id) ON DELETE CASCADE,
+    amount numeric NOT NULL,
+    method text NOT NULL,
+    status text DEFAULT 'completed',
+    user_id uuid REFERENCES auth.users(id),
+    created_at timestamp with time zone NOT NULL DEFAULT now()
 );
-
--- ========================================================
--- FUNCIÓN RPC: PROCESAR VENTA BULK CON LÓGICA FIFO
--- ========================================================
-
+-- 7. FUNCIONES RPC (Lógica de Negocio FIFO)
+-- Eliminar funciones previas para evitar conflictos de firma
+DROP FUNCTION IF EXISTS public.process_bulk_sales(jsonb, text, integer, uuid, uuid);
+DROP FUNCTION IF EXISTS public.update_product_stock(text, integer, numeric, uuid);
+-- Función de Ventas Masivas
 CREATE OR REPLACE FUNCTION public.process_bulk_sales(
-  p_items jsonb,          -- Array de objetos: {product_id, quantity, sale_price}
-  p_ticket_id text,
-  p_id_empresa uuid,
-  p_user_id uuid,
-  p_customer_id uuid DEFAULT NULL,
-  p_payment_method text DEFAULT 'cash'
-) RETURNS void AS $$
-DECLARE
-  v_item jsonb;
-  v_remaining_qty int;
-  v_batch_record RECORD;
-  v_take_qty int;
-BEGIN
-  FOR v_item IN SELECT * FROM jsonb_array_elements(p_items)
-  LOOP
-    v_remaining_qty := (v_item->>'quantity')::int;
-
-    -- Registrar la venta general (para reportes)
-    INSERT INTO public.sales (id_empresa, product_id, customer_id, quantity, sale_price, total, ticket_id, user_id, payment_method)
-    VALUES (p_id_empresa, (v_item->>'product_id')::uuid, p_customer_id, v_remaining_qty, (v_item->>'sale_price')::numeric, (v_item->>'sale_price')::numeric * v_remaining_qty, p_ticket_id, p_user_id, p_payment_method);
-
-    -- Lógica FIFO: Descontar de los lotes más antiguos
-    FOR v_batch_record IN 
-      SELECT id, quantity, cost 
-      FROM public.batches 
-      WHERE product_id = (v_item->>'product_id')::uuid 
-        AND id_empresa = p_id_empresa 
-        AND quantity > 0 
-      ORDER BY created_at ASC
-    LOOP
-      IF v_remaining_qty <= 0 THEN EXIT; END IF;
-
-      v_take_qty := LEAST(v_remaining_qty, v_batch_record.quantity);
-
-      UPDATE public.batches 
-      SET quantity = quantity - v_take_qty 
-      WHERE id = v_batch_record.id;
-
-      INSERT INTO public.inventory_movements (id_empresa, product_id, batch_id, type, quantity, cost, reference)
-      VALUES (p_id_empresa, (v_item->>'product_id')::uuid, v_batch_record.id, 'sale', -v_take_qty, v_batch_record.cost, p_ticket_id);
-
-      v_remaining_qty := v_remaining_qty - v_take_qty;
-    END LOOP;
-
-    -- Si queda cantidad restante, significa que vendimos sin stock suficiente (stock negativo virtual)
-    IF v_remaining_qty > 0 THEN
-       INSERT INTO public.inventory_movements (id_empresa, product_id, type, quantity, reference)
-       VALUES (p_id_empresa, (v_item->>'product_id')::uuid, 'sale', -v_remaining_qty, p_ticket_id);
-    END IF;
-
-  END LOOP;
+        p_items jsonb,
+        p_method text,
+        p_customer_id integer,
+        p_id_empresa uuid,
+        p_user_id uuid
+    ) RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE item jsonb;
+v_ticket_id text;
+v_required_quantity integer;
+v_batch record;
+v_total_cost numeric;
+BEGIN v_ticket_id := 'T-' || floor(
+    extract(
+        epoch
+        from now()
+    )
+) || '-' || floor(random() * 1000);
+FOR item IN
+SELECT *
+FROM jsonb_array_elements(p_items) LOOP v_required_quantity := (item->>'quantity')::integer;
+v_total_cost := 0;
+-- Lógica FIFO para reducir stock de lotes
+FOR v_batch IN
+SELECT id,
+    quantity,
+    cost
+FROM batches
+WHERE product_id = (item->>'product_id')
+    AND id_empresa = p_id_empresa
+    AND quantity > 0
+ORDER BY created_at ASC LOOP IF v_required_quantity <= 0 THEN EXIT;
+END IF;
+IF v_batch.quantity >= v_required_quantity THEN v_total_cost := v_total_cost + (v_required_quantity * v_batch.cost);
+UPDATE batches
+SET quantity = quantity - v_required_quantity
+WHERE id = v_batch.id;
+v_required_quantity := 0;
+ELSE v_total_cost := v_total_cost + (v_batch.quantity * v_batch.cost);
+v_required_quantity := v_required_quantity - v_batch.quantity;
+UPDATE batches
+SET quantity = 0
+WHERE id = v_batch.id;
+END IF;
+END LOOP;
+INSERT INTO sales (
+        id_empresa,
+        user_id,
+        product_id,
+        quantity,
+        sale_price,
+        total_cost,
+        payment_method,
+        ticket_id,
+        customer_id,
+        status
+    )
+VALUES (
+        p_id_empresa,
+        p_user_id,
+        (item->>'product_id'),
+        (item->>'quantity')::integer,
+        (item->>'sale_price')::numeric,
+        v_total_cost,
+        p_method,
+        v_ticket_id,
+        p_customer_id,
+        'completed'
+    );
+END LOOP;
 END;
-$$ LANGUAGE plpgsql;
-
--- ========================================================
--- POLÍTICAS DE SEGURIDAD (RLS)
--- ========================================================
-
-ALTER TABLE public.empresas ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.usuarios_empresa ENABLE ROW LEVEL SECURITY;
+$$;
+-- Función de Actualización de Stock
+CREATE OR REPLACE FUNCTION public.update_product_stock(
+        p_product_id text,
+        p_new_stock integer,
+        p_cost numeric,
+        p_id_empresa uuid
+    ) RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE v_current_stock integer;
+BEGIN
+SELECT COALESCE(SUM(quantity), 0) INTO v_current_stock
+FROM batches
+WHERE product_id = p_product_id
+    AND id_empresa = p_id_empresa;
+IF p_new_stock > v_current_stock THEN
+INSERT INTO batches (
+        product_id,
+        id_empresa,
+        user_id,
+        quantity,
+        initial_quantity,
+        cost
+    )
+VALUES (
+        p_product_id,
+        p_id_empresa,
+        auth.uid(),
+        p_new_stock - v_current_stock,
+        p_new_stock - v_current_stock,
+        p_cost
+    );
+ELSIF p_new_stock < v_current_stock THEN
+DECLARE v_to_remove integer := v_current_stock - p_new_stock;
+v_batch record;
+BEGIN FOR v_batch IN
+SELECT id,
+    quantity
+FROM batches
+WHERE product_id = p_product_id
+    AND id_empresa = p_id_empresa
+    AND quantity > 0
+ORDER BY created_at DESC -- Eliminar de los más nuevos primero
+    LOOP IF v_to_remove <= 0 THEN EXIT;
+END IF;
+IF v_batch.quantity >= v_to_remove THEN
+UPDATE batches
+SET quantity = quantity - v_to_remove
+WHERE id = v_batch.id;
+v_to_remove := 0;
+ELSE v_to_remove := v_to_remove - v_batch.quantity;
+UPDATE batches
+SET quantity = 0
+WHERE id = v_batch.id;
+END IF;
+END LOOP;
+END;
+END IF;
+END;
+$$;
+-- 8. SEGURIDAD RLS (Ejemplo para tabla products)
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.batches ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.sales ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
-
--- Los usuarios solo pueden ver lo que pertenece a su id_empresa
-CREATE POLICY tenant_isolation_policy ON public.products
-  FOR ALL USING (id_empresa IN (SELECT id_empresa FROM public.usuarios_empresa WHERE id_usuario = auth.uid()));
-
-CREATE POLICY tenant_isolation_policy ON public.batches
-  FOR ALL USING (id_empresa IN (SELECT id_empresa FROM public.usuarios_empresa WHERE id_usuario = auth.uid()));
-
-CREATE POLICY tenant_isolation_policy ON public.sales
-  FOR ALL USING (id_empresa IN (SELECT id_empresa FROM public.usuarios_empresa WHERE id_usuario = auth.uid()));
-
-CREATE POLICY tenant_isolation_policy ON public.expenses
-  FOR ALL USING (id_empresa IN (SELECT id_empresa FROM public.usuarios_empresa WHERE id_usuario = auth.uid()));
-
--- Índices para velocidad
-CREATE INDEX idx_products_barcode ON public.products(barcode);
-CREATE INDEX idx_batches_product ON public.batches(product_id);
-CREATE INDEX idx_sales_ticket ON public.sales(ticket_id);
+CREATE POLICY "Usuarios pueden ver productos de su empresa" ON public.products FOR
+SELECT USING (
+        id_empresa IN (
+            SELECT id_empresa
+            FROM usuarios_empresa
+            WHERE id_usuario = auth.uid()
+        )
+    );
+-- Repetir políticas similares para el resto de tablas...

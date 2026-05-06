@@ -27,20 +27,22 @@ export function Landing({ onSession }: { onSession: () => void }) {
     setLoading(true);
 
     try {
+      const authPromise = isLogin 
+        ? supabase.auth.signInWithPassword({ email, password })
+        : supabase.auth.signUp({ email, password });
+
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Tiempo de espera agotado. Revisa tu internet o variables de entorno.')), 5000)
+      );
+
+      const { error } = await Promise.race([authPromise, timeoutPromise]) as any;
+      
+      if (error) throw error;
+
       if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-        if (error) throw error;
         onSession();
       } else {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-        });
-        if (error) throw error;
-        toast.success('¡Registro exitoso! Revisa tu correo electrónico para confirmar tu cuenta.');
+        toast.success('¡Registro exitoso! Ya puedes iniciar sesión.');
         setIsLogin(true);
       }
     } catch (error: any) {
@@ -378,9 +380,13 @@ export function Landing({ onSession }: { onSession: () => void }) {
                 </div>
               )}
 
-              <button type="submit" disabled={loading} className="btn-submit" style={{ marginTop: isLogin ? '0' : '24px' }}>
-                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (isLogin ? 'Iniciar sesión' : 'Crear Cuenta')}
-                {!loading && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>}
+              <button 
+                type="submit" 
+                disabled={loading}
+                className="btn-submit"
+                style={{ marginTop: isLogin ? '0' : '24px' }}
+              >
+                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (isLogin ? 'PROBAR ACCESO →' : 'Crear Cuenta')}
               </button>
             </form>
 

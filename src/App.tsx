@@ -80,14 +80,16 @@ interface Analytics {
 
 // --- Components ---
 
-const SidebarItem = ({ icon: Icon, label, active, onClick }: any) => (
+const SidebarItem = ({ icon: Icon, label, active, onClick, disabled }: any) => (
   <button
     onClick={onClick}
+    disabled={disabled}
     className={cn(
       "flex items-center gap-3 w-full px-4 py-3 text-sm font-semibold transition-all rounded-lg mb-1",
       active
         ? "bg-[var(--primary)] text-white shadow-md shadow-blue-200"
-        : "text-gray-500 hover:bg-gray-100 hover:text-[var(--ink)]"
+        : "text-gray-500 hover:bg-gray-100 hover:text-[var(--ink)]",
+      disabled && "opacity-30 cursor-not-allowed grayscale"
     )}
   >
     <Icon size={18} />
@@ -101,7 +103,7 @@ import { SettingsView } from './components/SettingsView';
 export default function App() {
   const { session, user, idEmpresa, role, estadoSuscripcion, pinSeguridad, loading: loadingSession, signOut: handleLogout } = useAuth();
 
-  const [view, setView] = useState<'sales' | 'inventory' | 'analytics' | 'history' | 'expenses' | 'receivables' | 'settings'>('sales');
+  const [view, setView] = useState<'sales' | 'inventory' | 'analytics' | 'history' | 'expenses' | 'receivables' | 'settings'>(idEmpresa ? 'sales' : 'settings');
   const [products, setProducts] = useState<Product[]>([]);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [startDate, setStartDate] = useState(new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0]);
@@ -109,6 +111,12 @@ export default function App() {
   const [isExpressModalOpen, setIsExpressModalOpen] = useState(false);
   const [scannedId, setScannedId] = useState('');
   const [lowStockThreshold, setLowStockThreshold] = useState(5);
+
+  useEffect(() => {
+    if (!idEmpresa && session) {
+      setView('settings');
+    }
+  }, [idEmpresa, session]);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -176,18 +184,19 @@ export default function App() {
     }
   };
 
-  if (loadingSession) {
-    return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <Loader2 className="w-6 h-6 text-slate-300 animate-spin" />
-      </div>
-    );
-  }
-
   const isMissingEnvVars = !import.meta.env.VITE_SUPABASE_URL || 
     import.meta.env.VITE_SUPABASE_URL.includes('placeholder') ||
     !import.meta.env.VITE_SUPABASE_ANON_KEY ||
     import.meta.env.VITE_SUPABASE_ANON_KEY.includes('placeholder');
+
+  if (loadingSession) {
+    return (
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-white">
+        <div className="w-12 h-12 border-4 border-slate-100 border-t-[var(--primary)] rounded-full animate-spin mb-4"></div>
+        <p className="text-slate-400 font-medium animate-pulse">Verificando credenciales FastPOS...</p>
+      </div>
+    );
+  }
 
   if (isMissingEnvVars) {
     return (
@@ -210,27 +219,7 @@ export default function App() {
     return <SubscriptionModal />;
   }
 
-  if (!idEmpresa && session) {
-    return (
-      <div className="h-screen w-screen flex flex-col items-center justify-center p-4 bg-slate-50">
-        <div className="bg-white p-8 rounded-2xl shadow-xl border border-red-100 max-w-md text-center">
-          <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Building size={32} />
-          </div>
-          <h2 className="text-xl font-bold text-slate-800 mb-2">Empresa no encontrada</h2>
-          <p className="text-slate-500 text-sm mb-6">
-            Tu usuario está autenticado pero no parece estar vinculado a ninguna empresa en la tabla <code className="bg-slate-100 px-1 py-0.5 rounded text-red-500">usuarios_empresa</code>.
-          </p>
-          <button
-            onClick={handleLogout}
-            className="w-full bg-slate-800 text-white py-3 rounded-xl font-bold hover:bg-slate-900 transition-colors"
-          >
-            Cerrar sesión y reintentar
-          </button>
-        </div>
-      </div>
-    );
-  }
+  // Quitamos el bloqueo de 'Empresa no encontrada' para permitir el onboarding interno
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -255,48 +244,52 @@ export default function App() {
             icon={ShoppingCart}
             label="Terminal POS"
             active={view === 'sales'}
-            onClick={() => setView('sales')}
+            onClick={() => idEmpresa && setView('sales')}
+            disabled={!idEmpresa}
           />
           <SidebarItem
             icon={Package}
             label="Inventario"
             active={view === 'inventory'}
-            onClick={() => setView('inventory')}
+            onClick={() => idEmpresa && setView('inventory')}
+            disabled={!idEmpresa}
           />
-          {role === 'ADMIN' && (
+          {(role === 'ADMIN' || !idEmpresa) && (
             <SidebarItem
               icon={BarChart3}
               label="Reportes"
               active={view === 'analytics'}
-              onClick={() => setView('analytics')}
+              onClick={() => idEmpresa && setView('analytics')}
+              disabled={!idEmpresa}
             />
           )}
           <SidebarItem
             icon={History}
             label="Historial"
             active={view === 'history'}
-            onClick={() => setView('history')}
+            onClick={() => idEmpresa && setView('history')}
+            disabled={!idEmpresa}
           />
           <SidebarItem
             icon={CreditCard}
             label="Cuentas por Cobrar"
             active={view === 'receivables'}
-            onClick={() => setView('receivables')}
+            onClick={() => idEmpresa && setView('receivables')}
+            disabled={!idEmpresa}
           />
           <SidebarItem
             icon={Receipt}
             label="Gastos de Caja"
             active={view === 'expenses'}
-            onClick={() => setView('expenses')}
+            onClick={() => idEmpresa && setView('expenses')}
+            disabled={!idEmpresa}
           />
-          {(role?.toUpperCase() === 'ADMIN') && (
-            <SidebarItem
-              icon={Settings}
-              label="Configuración"
-              active={view === 'settings'}
-              onClick={() => setView('settings')}
-            />
-          )}
+          <SidebarItem
+            icon={Settings}
+            label="Configuración"
+            active={view === 'settings'}
+            onClick={() => setView('settings')}
+          />
         </nav>
 
         <div className="p-4 border-t border-[var(--line)] space-y-2">

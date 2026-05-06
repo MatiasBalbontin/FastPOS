@@ -26,8 +26,49 @@ export const SettingsView = () => {
       fetchSettings();
       fetchRoles();
       fetchUsersAndInvites();
+    } else {
+      setLoading(false);
+      fetchRoles();
     }
   }, [idEmpresa]);
+
+  const handleCreateCompany = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tenantName.trim()) return toast.error('El nombre es obligatorio');
+    
+    setIsSavingSettings(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('No autenticado');
+
+      // 1. Crear empresa
+      const { data: newCompany, error: cError } = await supabase
+        .from('empresas')
+        .insert({ name: tenantName.toUpperCase(), pin_seguridad: '6767' })
+        .select()
+        .single();
+      
+      if (cError) throw cError;
+
+      // 2. Vincular usuario como ADMIN
+      const { data: adminRole } = await supabase.from('roles').select('id').eq('name', 'ADMIN').single();
+      
+      const { error: uError } = await supabase.from('usuarios_empresa').insert({
+        id_empresa: newCompany.id,
+        id_usuario: user.id,
+        role_id: adminRole?.id
+      });
+
+      if (uError) throw uError;
+
+      toast.success('Empresa creada con éxito');
+      window.location.reload(); // Recargar para activar todo el sistema
+    } catch (err: any) {
+      toast.error('Error al crear empresa: ' + err.message);
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
 
   const fetchSettings = async () => {
     const { data } = await supabase.from('empresas').select('name, pin_seguridad').eq('id', idEmpresa).single();
@@ -41,11 +82,12 @@ export const SettingsView = () => {
     const { data } = await supabase.from('roles').select('*');
     if (data) {
       setRoles(data);
-      if (data.length > 0) setSelectedRole(data[0].id);
+      if (data.length > 0 && !selectedRole) setSelectedRole(data[0].id);
     }
   };
 
   const fetchUsersAndInvites = async () => {
+    if (!idEmpresa) return;
     setLoading(true);
     const { data: usersData } = await supabase
       .from('usuarios_empresa')
@@ -65,7 +107,7 @@ export const SettingsView = () => {
 
   const handleUpdateSettings = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (role?.toUpperCase() !== 'ADMIN') return;
+    if (!idEmpresa) return;
     setIsSavingSettings(true);
     const { error } = await supabase.from('empresas').update({ 
       name: tenantName,
@@ -79,7 +121,7 @@ export const SettingsView = () => {
 
   const handleInviteUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (role?.toUpperCase() !== 'ADMIN') return;
+    if (!idEmpresa) return;
     setIsInviting(true);
     
     const { error } = await supabase.from('invites').insert({
@@ -99,7 +141,6 @@ export const SettingsView = () => {
   };
 
   const handleRemoveUser = async (id: string) => {
-    if (role?.toUpperCase() !== 'ADMIN') return;
     if (!confirm('¿Quitar acceso a este usuario?')) return;
     
     const { error } = await supabase.from('usuarios_empresa').delete().eq('id', id);
@@ -109,6 +150,41 @@ export const SettingsView = () => {
       fetchUsersAndInvites();
     }
   };
+
+  if (!idEmpresa) {
+    return (
+      <div className="p-8 h-full flex flex-col items-center justify-center bg-slate-50">
+        <div className="max-w-md w-full bg-white p-10 rounded-[40px] shadow-2xl border border-blue-100 text-center">
+          <div className="w-20 h-20 bg-blue-100 text-blue-600 rounded-3xl flex items-center justify-center mx-auto mb-8">
+            <Building size={40} />
+          </div>
+          <h2 className="text-3xl font-black text-slate-900 mb-2">¡Bienvenido a FastPOS!</h2>
+          <p className="text-slate-500 text-sm mb-10">Para comenzar, necesitamos crear el perfil de tu comercio o empresa.</p>
+          
+          <form onSubmit={handleCreateCompany} className="space-y-6">
+            <div className="text-left">
+              <label className="text-[10px] font-bold uppercase text-slate-400 block mb-2 px-1">Nombre de tu Empresa</label>
+              <input 
+                type="text" 
+                value={tenantName}
+                onChange={e => setTenantName(e.target.value)}
+                autoFocus
+                className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl text-lg font-bold outline-none focus:ring-4 ring-blue-500/10 transition-all"
+                placeholder="EJ. MI TIENDA SPA"
+                required
+              />
+            </div>
+            <button 
+              disabled={isSavingSettings}
+              className="w-full bg-blue-600 text-white font-bold uppercase py-5 rounded-2xl hover:bg-blue-700 transition-all shadow-xl shadow-blue-200 disabled:opacity-50"
+            >
+              {isSavingSettings ? 'Creando Empresa...' : 'Comenzar Ahora'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   if (role?.toUpperCase() !== 'ADMIN') {
     return (

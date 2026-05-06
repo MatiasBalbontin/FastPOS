@@ -132,23 +132,27 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     if (!url || url.includes('placeholder') || !key || key.includes('placeholder')) {
       console.warn("AuthContext: Credenciales faltantes o placeholder. Abortando conexión.");
       setLoading(false);
-      clearTimeout(securityTimeout);
       return;
     }
 
-    const fetchSession = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        await handleSession(session);
-      } catch (err) {
-        console.error("AuthContext: fetchSession error", err);
+    // OPTIMIZACIÓN: Si no hay rastro de sesión en localStorage, no esperamos tanto
+    const hasLocalSession = !!localStorage.getItem('sb-' + import.meta.env.VITE_SUPABASE_URL?.split('//')[1]?.split('.')[0] + '-auth-token');
+    
+    const securityTimeout = setTimeout(() => {
+      if (loading) {
+        console.log("AuthContext: Security timeout reached (3s)");
         setLoading(false);
-      } finally {
-        clearTimeout(securityTimeout);
       }
-    };
+    }, hasLocalSession ? 3000 : 1000); // 1s si es usuario nuevo, 3s si podría tener sesión
 
-    fetchSession();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      handleSession(session);
+      clearTimeout(securityTimeout);
+    }).catch(err => {
+      console.error("AuthContext: Error getting session", err);
+      setLoading(false);
+      clearTimeout(securityTimeout);
+    });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       await handleSession(session);
