@@ -33,7 +33,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   const handleSession = async (currentSession: any) => {
-    setSession(currentSession);
     setUser(currentSession?.user || null);
 
     if (currentSession?.user) {
@@ -141,6 +140,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       api.setIdEmpresa(null);
     }
 
+    setSession(currentSession);
     setLoading(false);
   };
 

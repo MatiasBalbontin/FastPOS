@@ -110,6 +110,12 @@ export default function App() {
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    if (idEmpresa) {
+      api.setIdEmpresa(idEmpresa);
+    }
+  }, [idEmpresa]);
+
   const fetchProducts = async () => {
     if (!session) return;
     try {
