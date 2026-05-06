@@ -35,8 +35,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   const handleSession = async (currentSession: any) => {
+    console.log("🔍 [DIAGNÓSTICO] handleSession iniciado con:", currentSession ? "Sesión presente" : "Sin sesión");
     try {
       if (!currentSession) {
+        console.warn("⚠️ [DIAGNÓSTICO] No hay sesión activa. Limpiando estado.");
         setSession(null);
         setUser(null);
         setIdEmpresa(null);
@@ -47,37 +49,48 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
 
       // Validar sesión real
+      console.log("📡 [DIAGNÓSTICO] Verificando validez del usuario con Supabase...");
       const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
       if (userError || !user) {
-        console.warn("AuthContext: Sesión inválida detectada.");
+        console.error("❌ [DIAGNÓSTICO] Error al validar usuario:", userError?.message || "Usuario no encontrado");
         setSession(null);
         return;
       }
 
+      console.log("✅ [DIAGNÓSTICO] Usuario validado:", user.email);
       setUser(user);
       setSession(currentSession);
 
       // Buscar mapeo de empresa
-      const { data: mapping } = await supabase
+      console.log("🏢 [DIAGNÓSTICO] Buscando empresa vinculada para:", user.id);
+      const { data: mapping, error: mapError } = await supabase
         .from('usuarios_empresa')
         .select('id_empresa, roles(name), empresas(estado_suscripcion, pin_seguridad)')
         .eq('id_usuario', user.id)
         .maybeSingle();
 
+      if (mapError) {
+        console.error("❌ [DIAGNÓSTICO] Error al buscar empresa:", mapError.message);
+      }
+
       if (mapping) {
+        console.log("🎉 [DIAGNÓSTICO] Empresa encontrada:", mapping.id_empresa);
         setIdEmpresa(mapping.id_empresa);
         setRole((mapping.roles as any)?.name?.toUpperCase() || 'USER');
         setEstadoSuscripcion(mapping.empresas?.estado_suscripcion || 'activo');
         setPinSeguridad(mapping.empresas?.pin_seguridad || '6767');
         api.setIdEmpresa(mapping.id_empresa);
       } else {
+        console.warn("ℹ️ [DIAGNÓSTICO] El usuario no tiene empresa vinculada todavía.");
         setIdEmpresa(null);
         api.setIdEmpresa(null);
       }
-    } catch (err) {
-      console.error("AuthContext: handleSession error", err);
+    } catch (err: any) {
+      console.error("🔥 [DIAGNÓSTICO] Error crítico en AuthContext:", err.message);
       setSession(null);
     } finally {
+      console.log("🏁 [DIAGNÓSTICO] handleSession finalizado.");
       setLoading(false);
     }
   };
