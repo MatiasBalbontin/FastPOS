@@ -40,7 +40,8 @@ export function Landing({ onSession }: { onSession: () => void }) {
       if (error) throw error;
 
       if (isLogin) {
-        onSession();
+        // Forzamos una recarga limpia para que AuthContext detecte la nueva sesión
+        window.location.href = '/'; 
       } else {
         toast.success('¡Registro exitoso! Ya puedes iniciar sesión.');
         setIsLogin(true);
