@@ -27,22 +27,16 @@ export function Landing({ onSession }: { onSession: () => void }) {
     setLoading(true);
 
     try {
-      const authPromise = isLogin 
-        ? supabase.auth.signInWithPassword({ email, password })
-        : supabase.auth.signUp({ email, password });
-
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Tiempo de espera agotado. Revisa tu internet o variables de entorno.')), 5000)
-      );
-
-      const { error } = await Promise.race([authPromise, timeoutPromise]) as any;
+      const { data, error } = isLogin 
+        ? await supabase.auth.signInWithPassword({ email, password })
+        : await supabase.auth.signUp({ email, password });
       
       if (error) throw error;
 
-      if (isLogin) {
-        // Forzamos una recarga limpia para que AuthContext detecte la nueva sesión
+      if (isLogin && data.session) {
+        console.log("¡Login exitoso detectado! Redirigiendo...");
         window.location.href = '/'; 
-      } else {
+      } else if (!isLogin) {
         toast.success('¡Registro exitoso! Ya puedes iniciar sesión.');
         setIsLogin(true);
       }
