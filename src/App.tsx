@@ -224,7 +224,7 @@ export default function App() {
             onSale={handleSale}
             products={products}
             onProductNotFound={(id: string) => {
-              setScannedId(id);
+              setScannedId(id.trim());
               setIsExpressModalOpen(true);
             }}
           />
@@ -233,6 +233,10 @@ export default function App() {
           <InventoryView
             products={products}
             onRefresh={fetchProducts}
+            onAddProduct={() => {
+              setScannedId('');
+              setIsExpressModalOpen(true);
+            }}
             lowStockThreshold={lowStockThreshold}
             setLowStockThreshold={setLowStockThreshold}
           />
@@ -274,9 +278,13 @@ export default function App() {
       {isExpressModalOpen && (
         <ExpressModal
           initialId={scannedId}
-          onClose={() => setIsExpressModalOpen(false)}
+          onClose={() => {
+            setIsExpressModalOpen(false);
+            setScannedId('');
+          }}
           onSuccess={() => {
             setIsExpressModalOpen(false);
+            setScannedId('');
             fetchProducts();
           }}
         />
@@ -343,13 +351,15 @@ function SalesView({ searchInputRef, onSale, products, onProductNotFound }: any)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (query) {
-      const exactMatch = products.find((p: any) => p.id === query.toUpperCase());
-      if (exactMatch) {
-        addToCart(exactMatch);
-      } else {
-        onProductNotFound(query.toUpperCase());
-      }
+    const cleanQuery = query.trim().toUpperCase();
+    if (!cleanQuery) return;
+
+    const exactMatch = products.find((p: any) => p.id === cleanQuery);
+    if (exactMatch) {
+      addToCart(exactMatch);
+      setQuery('');
+    } else {
+      onProductNotFound(cleanQuery);
     }
   };
 
@@ -735,7 +745,7 @@ function PaymentModal({ total, onClose, onConfirm }: any) {
   );
 }
 
-function InventoryView({ products, onRefresh, lowStockThreshold, setLowStockThreshold }: any) {
+function InventoryView({ products, onRefresh, onAddProduct, lowStockThreshold, setLowStockThreshold }: any) {
   const [search, setSearch] = useState('');
   const [showCosts, setShowCosts] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any>(null);
@@ -803,6 +813,13 @@ function InventoryView({ products, onRefresh, lowStockThreshold, setLowStockThre
             className="flex items-center gap-2 border border-[var(--line)] px-4 py-2 bg-white rounded-lg text-[10px] font-bold uppercase hover:bg-gray-50 transition-all shadow-sm"
           >
             <Upload size={14} /> Importar
+          </button>
+
+          <button
+            onClick={() => onAddProduct()}
+            className="flex items-center gap-2 bg-[var(--primary)] text-white px-4 py-2 rounded-lg text-[10px] font-bold uppercase hover:opacity-90 transition-all shadow-md shadow-blue-100"
+          >
+            <Plus size={14} /> Nuevo Producto
           </button>
 
           <div className="flex items-center gap-2 border border-[var(--line)] px-4 py-2 bg-white rounded-lg shadow-sm">
@@ -1442,22 +1459,27 @@ function ExpressModal({ initialId, onClose, onSuccess }: any) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch('/api/products', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...formData,
-        sale_price: parseFloat(formData.sale_price),
-        initial_stock: parseInt(formData.initial_stock),
-        cost: parseFloat(formData.cost)
-      })
-    });
+    try {
+      const res = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...formData,
+          sale_price: parseFloat(formData.sale_price) || 0,
+          initial_stock: parseInt(formData.initial_stock, 10) || 0,
+          cost: parseFloat(formData.cost) || 0
+        })
+      });
 
-    if (res.ok) {
-      toast.success('Producto creado');
-      onSuccess();
-    } else {
-      toast.error('Error al crear producto');
+      const data = await res.json();
+      if (res.ok) {
+        toast.success('Producto guardado correctamente');
+        onSuccess();
+      } else {
+        toast.error(data.error || 'Error al guardar producto');
+      }
+    } catch (error) {
+      toast.error('Error de conexión con el servidor');
     }
   };
 
@@ -1471,12 +1493,18 @@ function ExpressModal({ initialId, onClose, onSuccess }: any) {
 
         <form onSubmit={handleSubmit} className="p-8 space-y-6">
           <div>
-            <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Código Detectado</label>
+            <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Código / Barcode *</label>
             <input
               type="text"
+              required
               value={formData.id}
-              readOnly
-              className="w-full bg-gray-50 border border-[var(--line)] p-2 font-mono text-sm text-gray-500 rounded-lg"
+              onChange={e => setFormData({ ...formData, id: e.target.value.toUpperCase().trim() })}
+              readOnly={!!initialId}
+              placeholder="ESCANEE O ESCRIBA CÓDIGO"
+              className={cn(
+                "w-full border border-[var(--line)] p-2 font-mono text-sm rounded-lg focus:outline-none focus:ring-2 ring-[var(--primary)]/20",
+                initialId ? "bg-gray-50 text-gray-500" : "bg-white"
+              )}
             />
           </div>
 

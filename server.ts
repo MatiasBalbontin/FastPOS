@@ -117,28 +117,44 @@ async function startServer() {
 
   // Create or Update Product (Express Creation)
   app.post('/api/products', (req, res) => {
-    const { id, name, type, sale_price, initial_stock, cost = 0 } = req.body;
+    try {
+      const { id, name, type, sale_price, initial_stock, cost = 0 } = req.body;
 
-    const transaction = db.transaction(() => {
-      db.prepare(`
-        INSERT INTO products (id, name, type, sale_price)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-          name = excluded.name,
-          type = excluded.type,
-          sale_price = excluded.sale_price
-      `).run(id, name.toUpperCase(), type.toUpperCase(), sale_price);
-
-      if (initial_stock > 0) {
-        db.prepare(`
-          INSERT INTO batches (product_id, quantity, initial_quantity, cost)
-          VALUES (?, ?, ?, ?)
-        `).run(id, initial_stock, initial_stock, cost);
+      if (!id || !name || !type) {
+        return res.status(400).json({ error: 'ID, Nombre y Tipo son obligatorios' });
       }
-    });
 
-    transaction();
-    res.json({ success: true });
+      const cleanId = String(id).trim().toUpperCase();
+      const cleanName = String(name).trim().toUpperCase();
+      const cleanType = String(type).trim().toUpperCase();
+      const numSalePrice = parseFloat(sale_price) || 0;
+      const numInitialStock = parseInt(initial_stock, 10) || 0;
+      const numCost = parseFloat(cost) || 0;
+
+      const transaction = db.transaction(() => {
+        db.prepare(`
+          INSERT INTO products (id, name, type, sale_price)
+          VALUES (?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            name = excluded.name,
+            type = excluded.type,
+            sale_price = excluded.sale_price
+        `).run(cleanId, cleanName, cleanType, numSalePrice);
+
+        if (numInitialStock > 0) {
+          db.prepare(`
+            INSERT INTO batches (product_id, quantity, initial_quantity, cost)
+            VALUES (?, ?, ?, ?)
+          `).run(cleanId, numInitialStock, numInitialStock, numCost);
+        }
+      });
+
+      transaction();
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Error creating product:', error);
+      res.status(400).json({ error: error.message });
+    }
   });
 
   // Update Product Details
@@ -224,8 +240,21 @@ async function startServer() {
     const { products: importData } = req.body;
 
     try {
+      if (!importData || !Array.isArray(importData)) {
+        throw new Error('Datos de importación inválidos');
+      }
+
       const transaction = db.transaction(() => {
         for (const item of importData) {
+          const cleanId = String(item.id).trim().toUpperCase();
+          const cleanName = String(item.name).trim().toUpperCase();
+          const cleanType = String(item.type).trim().toUpperCase();
+          const numSalePrice = parseFloat(item.sale_price) || 0;
+          const numInitialStock = parseInt(item.initial_stock, 10) || 0;
+          const numCost = parseFloat(item.cost) || 0;
+
+          if (!cleanId || !cleanName) continue; // Skip malformed rows
+
           db.prepare(`
             INSERT INTO products (id, name, type, sale_price)
             VALUES (?, ?, ?, ?)
@@ -233,19 +262,20 @@ async function startServer() {
               name = excluded.name,
               type = excluded.type,
               sale_price = excluded.sale_price
-          `).run(item.id, item.name.toUpperCase(), item.type.toUpperCase(), item.sale_price);
+          `).run(cleanId, cleanName, cleanType, numSalePrice);
 
-          if (item.initial_stock > 0) {
+          if (numInitialStock > 0) {
             db.prepare(`
               INSERT INTO batches (product_id, quantity, initial_quantity, cost)
               VALUES (?, ?, ?, ?)
-            `).run(item.id, item.initial_stock, item.initial_stock, item.cost || 0);
+            `).run(cleanId, numInitialStock, numInitialStock, numCost);
           }
         }
       });
       transaction();
       res.json({ success: true });
     } catch (error: any) {
+      console.error('Error in bulk import:', error);
       res.status(400).json({ error: error.message });
     }
   });
