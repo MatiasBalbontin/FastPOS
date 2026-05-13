@@ -53,6 +53,7 @@ interface Product {
   total_stock: number;
   has_zero_cost: boolean;
   cost?: number; // Added for display
+  active: number; // 1 for active, 0 for inactive
 }
 
 interface Analytics {
@@ -60,9 +61,13 @@ interface Analytics {
   categoryAnalysis: { type: string; volume: number; revenue: number }[];
   summary: { 
     total_revenue: number; total_cost: number; total_profit: number; 
+    collected_revenue: number; collected_cost: number;
+    receivables_revenue: number; receivables_cost: number;
     cash_revenue: number; card_revenue: number;
     total_expenses: number; cash_expenses: number; card_expenses: number;
     total_inventory_value: number;
+    total_receivables: number;
+    total_fixed_costs: number;
   };
   inventoryByFamily: { type: string; total_stock: number; total_value: number }[];
 }
@@ -85,7 +90,7 @@ const SidebarItem = ({ icon: Icon, label, active, onClick }: any) => (
 );
 
 export default function App() {
-  const [view, setView] = useState<'sales' | 'inventory' | 'analytics' | 'history' | 'expenses' | 'receivables'>('sales');
+  const [view, setView] = useState<'sales' | 'inventory' | 'analytics' | 'history' | 'expenses' | 'receivables' | 'fixed_costs'>('sales');
   const [products, setProducts] = useState<Product[]>([]);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [startDate, setStartDate] = useState(new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0]);
@@ -96,8 +101,10 @@ export default function App() {
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const fetchProducts = async () => {
-    const res = await fetch('/api/products');
+  const [showArchived, setShowArchived] = useState(false);
+
+  const fetchProducts = async (includeInactive = false) => {
+    const res = await fetch(`/api/products?includeInactive=${includeInactive}`);
     const data = await res.json();
     setProducts(data);
   };
@@ -109,8 +116,8 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetchProducts();
-  }, []);
+    fetchProducts(showArchived);
+  }, [showArchived]);
 
   useEffect(() => {
     fetchAnalytics();
@@ -198,6 +205,12 @@ export default function App() {
             active={view === 'expenses'}
             onClick={() => setView('expenses')}
           />
+          <SidebarItem
+            icon={Lock}
+            label="Costos Fijos"
+            active={view === 'fixed_costs'}
+            onClick={() => setView('fixed_costs')}
+          />
         </nav>
 
         <div className="p-4 border-t border-[var(--line)] space-y-2">
@@ -232,13 +245,15 @@ export default function App() {
         {view === 'inventory' && (
           <InventoryView
             products={products}
-            onRefresh={fetchProducts}
+            onRefresh={() => fetchProducts(showArchived)}
             onAddProduct={() => {
               setScannedId('');
               setIsExpressModalOpen(true);
             }}
             lowStockThreshold={lowStockThreshold}
             setLowStockThreshold={setLowStockThreshold}
+            showArchived={showArchived}
+            setShowArchived={setShowArchived}
           />
         )}
         {view === 'analytics' && (
@@ -271,6 +286,9 @@ export default function App() {
               fetchAnalytics();
             }}
           />
+        )}
+        {view === 'fixed_costs' && (
+          <FixedCostsView />
         )}
       </main>
 
@@ -745,7 +763,7 @@ function PaymentModal({ total, onClose, onConfirm }: any) {
   );
 }
 
-function InventoryView({ products, onRefresh, onAddProduct, lowStockThreshold, setLowStockThreshold }: any) {
+function InventoryView({ products, onRefresh, onAddProduct, lowStockThreshold, setLowStockThreshold, showArchived, setShowArchived }: any) {
   const [search, setSearch] = useState('');
   const [showCosts, setShowCosts] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any>(null);
@@ -798,8 +816,12 @@ function InventoryView({ products, onRefresh, onAddProduct, lowStockThreshold, s
     <div className="p-8">
       <div className="flex justify-between items-end mb-8">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight text-[var(--ink)]">Inventario Maestro</h2>
-          <p className="text-sm text-gray-500 mt-1">Control total de existencias y lotes FIFO.</p>
+          <h2 className="text-3xl font-bold tracking-tight text-[var(--ink)]">
+            {showArchived ? 'Productos Archivados' : 'Inventario Maestro'}
+          </h2>
+          <p className="text-sm text-gray-500 mt-1">
+            {showArchived ? 'Historial de productos que ya no están en venta.' : 'Control total de existencias y lotes FIFO.'}
+          </p>
         </div>
         <div className="flex gap-4 items-center">
           <button
@@ -820,6 +842,19 @@ function InventoryView({ products, onRefresh, onAddProduct, lowStockThreshold, s
             className="flex items-center gap-2 bg-[var(--primary)] text-white px-4 py-2 rounded-lg text-[10px] font-bold uppercase hover:opacity-90 transition-all shadow-md shadow-blue-100"
           >
             <Plus size={14} /> Nuevo Producto
+          </button>
+
+          <button
+            onClick={() => setShowArchived(!showArchived)}
+            className={cn(
+              "flex items-center gap-2 border px-4 py-2 rounded-lg text-[10px] font-bold uppercase transition-all shadow-sm",
+              showArchived 
+                ? "bg-amber-100 border-amber-300 text-amber-700 hover:bg-amber-200" 
+                : "bg-white border-[var(--line)] text-gray-500 hover:bg-gray-50"
+            )}
+          >
+            {showArchived ? <EyeOff size={14} /> : <Eye size={14} />}
+            {showArchived ? 'Ver Activos' : 'Ver Archivados'}
           </button>
 
           <div className="flex items-center gap-2 border border-[var(--line)] px-4 py-2 bg-white rounded-lg shadow-sm">
@@ -861,11 +896,11 @@ function InventoryView({ products, onRefresh, onAddProduct, lowStockThreshold, s
       )}
 
       <div className="border border-[var(--line)] bg-white rounded-2xl overflow-hidden shadow-xl">
-        <div className="grid grid-cols-[1.2fr_2.5fr_1.2fr_0.8fr_1fr_1fr_1fr_80px] col-header">
-          <div className="truncate">ID_BARCODE</div>
-          <div className="truncate">NOMBRE_PRODUCTO</div>
+        <div className="grid grid-cols-[100px_minmax(200px,3fr)_1.2fr_100px_120px_120px_1.5fr_80px] col-header bg-gray-50/50">
+          <div className="truncate">ID</div>
+          <div className="truncate">PRODUCTO</div>
           <div className="truncate">CATEGORÍA</div>
-          <div className="text-right truncate">STOCK</div>
+          <div className="text-center truncate">STOCK</div>
           <div className="text-right flex items-center justify-end gap-2 truncate">
             COSTO
             <button onClick={() => setShowCosts(!showCosts)} className="text-gray-400 hover:text-[var(--primary)] flex-shrink-0">
@@ -881,29 +916,42 @@ function InventoryView({ products, onRefresh, onAddProduct, lowStockThreshold, s
             const isLowStock = p.total_stock < lowStockThreshold;
             return (
               <div key={p.id} className={cn(
-                "grid grid-cols-[1.2fr_2.5fr_1.2fr_0.8fr_1fr_1fr_1fr_80px] data-row text-sm items-center",
-                isLowStock && "bg-red-50/50",
+                "grid grid-cols-[100px_minmax(200px,3fr)_1.2fr_100px_120px_120px_1.5fr_80px] data-row text-sm items-center hover:bg-gray-50/50 transition-colors",
+                isLowStock && p.active === 1 && "bg-red-50/30",
                 exactMatch?.id === p.id && "bg-green-50"
               )}>
                 <div className="text-[10px] font-mono text-gray-400 truncate pr-2">{p.id}</div>
-                <div className="font-bold uppercase truncate flex items-center gap-2 text-[var(--ink)]">
+                <div className="font-bold uppercase truncate pr-4 text-[var(--ink)]">
                   {p.name}
-                  {isLowStock && <AlertTriangle size={12} className="text-red-600 flex-shrink-0" />}
                 </div>
                 <div className="text-xs text-gray-500 truncate">{p.type}</div>
-                <div className="text-right font-bold">{p.total_stock}</div>
+                <div className={cn(
+                  "text-center font-bold",
+                  isLowStock && p.active === 1 ? "text-red-600" : "text-gray-700"
+                )}>
+                  {p.total_stock}
+                </div>
                 <div className="text-right font-mono text-gray-600">
                   {showCosts ? `$${(p.cost || 0).toLocaleString()}` : '••••••'}
                 </div>
                 <div className="text-right font-bold text-[var(--primary)]">${p.sale_price.toLocaleString()}</div>
-                <div className="flex justify-center items-center gap-2">
-                  {isLowStock && (
-                    <span className="bg-red-100 text-red-700 text-[9px] px-2 py-0.5 font-bold uppercase rounded border border-red-200">STOCK_BAJO</span>
-                  )}
-                  {p.has_zero_cost ? (
-                    <span className="bg-amber-100 text-amber-700 text-[9px] px-2 py-0.5 font-bold uppercase rounded border border-amber-200">Pendiente_Costo</span>
+                <div className="flex flex-wrap justify-center items-center gap-1.5 px-2 min-h-[32px]">
+                  {p.active === 0 ? (
+                    <span className="bg-gray-100 text-gray-500 text-[9px] px-2 py-0.5 font-bold uppercase rounded-full border border-gray-200">Archivado</span>
                   ) : (
-                    !isLowStock && <span className="bg-green-100 text-green-700 text-[9px] px-2 py-0.5 font-bold uppercase rounded border border-green-200">OK</span>
+                    <>
+                      {isLowStock ? (
+                        <span className="bg-red-50 text-red-600 text-[9px] px-2 py-0.5 font-bold uppercase rounded-full border border-red-100 flex items-center gap-1">
+                          <AlertTriangle size={10} /> Stock Bajo
+                        </span>
+                      ) : null}
+                      {p.has_zero_cost ? (
+                        <span className="bg-amber-50 text-amber-600 text-[9px] px-2 py-0.5 font-bold uppercase rounded-full border border-amber-100">Sin Costo</span>
+                      ) : null}
+                      {(!isLowStock && !p.has_zero_cost) ? (
+                        <span className="bg-green-50 text-green-600 text-[9px] px-2 py-0.5 font-bold uppercase rounded-full border border-green-100">Disponible</span>
+                      ) : null}
+                    </>
                   )}
                 </div>
                 <div className="flex justify-center">
@@ -960,10 +1008,16 @@ function AnalyticsView({ analytics, startDate, setStartDate, endDate, setEndDate
   setEndDate: (d: string) => void;
 }) {
   const [metric, setMetric] = useState<'monto' | 'cantidad'>('monto');
+  const [includeReceivables, setIncludeReceivables] = useState(false);
 
   if (!analytics) return null;
 
   const COLORS = ['#005EB8', '#FFC785', '#10B981', '#F59E0B', '#6366F1'];
+
+  const currentRevenue = includeReceivables ? analytics.summary.total_revenue : (analytics.summary.collected_revenue || 0);
+  const currentCost = includeReceivables ? analytics.summary.total_cost : (analytics.summary.collected_cost || 0);
+  const currentProfit = currentRevenue - currentCost;
+  const margin = currentRevenue > 0 ? (currentProfit / currentRevenue) * 100 : 0;
 
   return (
     <div className="p-8 space-y-8">
@@ -973,6 +1027,18 @@ function AnalyticsView({ analytics, startDate, setStartDate, endDate, setEndDate
           <p className="text-sm text-gray-500 mt-1">Visualización de rendimiento y rentabilidad.</p>
         </div>
         <div className="flex gap-4 items-center">
+          <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border border-[var(--line)] shadow-sm">
+             <label className="text-[10px] font-bold uppercase text-gray-400 cursor-pointer flex items-center gap-2">
+                <input 
+                  type="checkbox" 
+                  checked={includeReceivables} 
+                  onChange={(e) => setIncludeReceivables(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-[var(--primary)] focus:ring-[var(--primary)]"
+                />
+                Incluir Cuentas por Cobrar
+             </label>
+          </div>
+
           <div className="flex flex-col">
             <label className="text-[10px] font-bold uppercase text-[var(--primary)] mb-1">Visualizar Gráficos por</label>
             <select
@@ -1009,11 +1075,16 @@ function AnalyticsView({ analytics, startDate, setStartDate, endDate, setEndDate
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-8">
-        <StatCard label="Ingresos Totales" value={`$${analytics.summary.total_revenue?.toLocaleString() || 0}`} />
-        <StatCard label="Costo de Ventas" value={`$${analytics.summary.total_cost?.toLocaleString() || 0}`} />
-        <StatCard label="Utilidad Real (FIFO)" value={`$${analytics.summary.total_profit?.toLocaleString() || 0}`} trend />
-        <StatCard label="Valor Total Inventario" value={`$${analytics.summary.total_inventory_value?.toLocaleString() || 0}`} />
+      <div className="grid grid-cols-5 gap-6">
+        <StatCard label={includeReceivables ? "Ingresos Totales" : "Ingresos Cobrados"} value={`$${currentRevenue.toLocaleString()}`} />
+        <StatCard label={includeReceivables ? "Costo de Ventas" : "Costo (Efectivo/Tj)"} value={`$${currentCost.toLocaleString()}`} />
+        <StatCard label="Utilidad Real (FIFO)" value={`$${currentProfit.toLocaleString()}`} trend />
+        <StatCard 
+          label="Margen de Utilidad" 
+          value={`${margin.toFixed(2)}%`} 
+          highlight={margin > 20}
+        />
+        <StatCard label="Valor Inventario" value={`$${analytics.summary.total_inventory_value?.toLocaleString() || 0}`} />
       </div>
 
       <div className="grid grid-cols-3 gap-8">
@@ -1109,26 +1180,92 @@ function AnalyticsView({ analytics, startDate, setStartDate, endDate, setEndDate
         </div>
       </div>
 
-      <div className="p-8 border border-[var(--line)] bg-white rounded-2xl shadow-sm">
-        <h3 className="text-sm font-bold uppercase mb-8 text-gray-500 tracking-wider">
-          Inventario por Familia {metric === 'monto' ? '(Valor Monetario)' : '(Existencias)'}
-        </h3>
-        <div className="h-72">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={analytics.inventoryByFamily} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
-              <XAxis type="number" fontSize={10} tick={{ fill: '#6B7280' }} axisLine={false} tickLine={false} tickFormatter={(val) => metric === 'monto' ? `$${val.toLocaleString()}` : val.toLocaleString()} />
-              <YAxis dataKey="type" type="category" fontSize={10} tick={{ fill: '#6B7280' }} axisLine={false} tickLine={false} width={100} />
-              <Tooltip
-                formatter={(value: number) => [metric === 'monto' ? `$${value.toLocaleString()}` : value.toLocaleString(), metric === 'monto' ? 'Valor Inventario' : 'Cantidad']}
-                contentStyle={{ backgroundColor: '#fff', border: '1px solid #E5E7EB', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                itemStyle={{ color: '#111827', fontSize: '12px', fontWeight: '600' }}
-              />
-              <Bar dataKey={metric === 'monto' ? 'total_value' : 'total_stock'} fill="#FFC785" radius={[0, 4, 4, 0]}>
-                <LabelList dataKey={metric === 'monto' ? 'total_value' : 'total_stock'} position="right" formatter={(val: number) => metric === 'monto' ? `$${val.toLocaleString()}` : val.toLocaleString()} style={{ fill: '#111827', fontSize: 10, fontWeight: 'bold' }} />
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+      <div className="grid grid-cols-2 gap-8">
+        <div className="p-8 border border-[var(--line)] bg-white rounded-2xl shadow-sm">
+          <h3 className="text-sm font-bold uppercase mb-8 text-gray-500 tracking-wider">
+            Inventario por Familia {metric === 'monto' ? '(Valor Monetario)' : '(Existencias)'}
+          </h3>
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={analytics.inventoryByFamily} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
+                <XAxis type="number" fontSize={10} tick={{ fill: '#6B7280' }} axisLine={false} tickLine={false} tickFormatter={(val) => metric === 'monto' ? `$${val.toLocaleString()}` : val.toLocaleString()} />
+                <YAxis dataKey="type" type="category" fontSize={10} tick={{ fill: '#6B7280' }} axisLine={false} tickLine={false} width={100} />
+                <Tooltip
+                  formatter={(value: number) => [metric === 'monto' ? `$${value.toLocaleString()}` : value.toLocaleString(), metric === 'monto' ? 'Valor Inventario' : 'Cantidad']}
+                  contentStyle={{ backgroundColor: '#fff', border: '1px solid #E5E7EB', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                  itemStyle={{ color: '#111827', fontSize: '12px', fontWeight: '600' }}
+                />
+                <Bar dataKey={metric === 'monto' ? 'total_value' : 'total_stock'} fill="#FFC785" radius={[0, 4, 4, 0]}>
+                  <LabelList dataKey={metric === 'monto' ? 'total_value' : 'total_stock'} position="right" formatter={(val: number) => metric === 'monto' ? `$${val.toLocaleString()}` : val.toLocaleString()} style={{ fill: '#111827', fontSize: 10, fontWeight: 'bold' }} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="p-8 border border-[var(--line)] bg-white rounded-2xl shadow-sm">
+           <h3 className="text-sm font-bold uppercase mb-2 text-gray-500 tracking-wider text-center">
+            Punto de Equilibrio (Break-even)
+          </h3>
+          <p className="text-[10px] text-gray-400 text-center mb-8 italic uppercase">Meta para cubrir costos fijos (${(analytics.summary.total_fixed_costs || 1).toLocaleString()})</p>
+          <div className="h-72 relative flex flex-col items-center justify-center">
+            {(() => {
+              const fixedCosts = analytics.summary.total_fixed_costs || 1;
+              const marginDec = (margin / 100);
+              const breakEven = marginDec > 0 ? fixedCosts / marginDec : 0;
+              const maxVal = breakEven * 2 || currentRevenue * 2 || 100;
+              
+              // We use PieChart to simulate a Gauge
+              const data = [
+                { name: 'Progress', value: Math.min(currentRevenue, maxVal) },
+                { name: 'Remaining', value: Math.max(0, maxVal - currentRevenue) }
+              ];
+
+              return (
+                <>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={data}
+                        cx="50%"
+                        cy="80%"
+                        startAngle={180}
+                        endAngle={0}
+                        innerRadius={80}
+                        outerRadius={120}
+                        paddingAngle={2}
+                        dataKey="value"
+                      >
+                        <Cell fill={currentRevenue >= breakEven ? '#10B981' : '#F59E0B'} />
+                        <Cell fill="#F3F4F6" />
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  
+                  {/* Gauge Overlay Labels */}
+                  <div className="absolute bottom-[20%] text-center">
+                    <div className="text-[10px] font-bold text-gray-400 uppercase">Recaudación Actual</div>
+                    <div className={cn("text-3xl font-bold font-mono", currentRevenue >= breakEven ? "text-green-600" : "text-amber-600")}>
+                      ${currentRevenue.toLocaleString()}
+                    </div>
+                    <div className="w-full h-px bg-gray-100 my-2"></div>
+                    <div className="text-[10px] font-bold text-gray-500 uppercase">Punto de Equilibrio</div>
+                    <div className="text-lg font-bold text-gray-700 font-mono">
+                      ${Math.round(breakEven).toLocaleString()}
+                    </div>
+                  </div>
+
+                  {/* Marker for 50% (Break-even point) */}
+                  <div className="absolute top-[20%] left-1/2 -translate-x-1/2 flex flex-col items-center">
+                    <div className="w-1 h-4 bg-[var(--ink)] mb-1"></div>
+                    <span className="text-[9px] font-black uppercase text-[var(--ink)] bg-white px-1">Meta</span>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
         </div>
       </div>
     </div>
@@ -1228,18 +1365,31 @@ function EditProductModal({ product, onClose, onSuccess }: any) {
   };
 
   const handleDelete = async () => {
-    if (!window.confirm(`¿Está seguro que desea eliminar permanentemente el producto ${product.name}?`)) {
+    if (!window.confirm(`¿Desea archivar el producto ${product.name}? Dejará de estar disponible en el POS e Inventario, pero se mantendrá en el historial.`)) {
       return;
     }
     const res = await fetch(`/api/products/${product.id}`, {
       method: 'DELETE'
     });
     if (res.ok) {
-      toast.success('Producto eliminado');
+      toast.success('Producto archivado correctamente');
       onSuccess();
     } else {
       const data = await res.json();
-      toast.error(data.error || 'Error al eliminar');
+      toast.error(data.error || 'Error al archivar');
+    }
+  };
+
+  const handleRestore = async () => {
+    const res = await fetch(`/api/products/${product.id}/restore`, {
+      method: 'POST'
+    });
+    if (res.ok) {
+      toast.success('Producto restaurado correctamente');
+      onSuccess();
+    } else {
+      const data = await res.json();
+      toast.error(data.error || 'Error al restaurar');
     }
   };
 
@@ -1326,13 +1476,23 @@ function EditProductModal({ product, onClose, onSuccess }: any) {
                 Cancelar
               </button>
             </div>
-            <button
-              type="button"
-              onClick={handleDelete}
-              className="w-full flex items-center justify-center gap-2 text-red-500 border border-red-200 py-2.5 rounded-xl font-bold uppercase text-xs hover:bg-red-50 transition-colors bg-white mt-1"
-            >
-              <Trash2 size={16} /> Eliminar Producto
-            </button>
+            {product.active === 1 ? (
+              <button
+                type="button"
+                onClick={handleDelete}
+                className="w-full flex items-center justify-center gap-2 text-red-500 border border-red-200 py-2.5 rounded-xl font-bold uppercase text-xs hover:bg-red-50 transition-colors bg-white mt-1"
+              >
+                <Trash2 size={16} /> Archivar Producto
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleRestore}
+                className="w-full flex items-center justify-center gap-2 text-green-600 border border-green-200 py-2.5 rounded-xl font-bold uppercase text-xs hover:bg-green-50 transition-colors bg-white mt-1"
+              >
+                <Check size={16} /> Restaurar Producto
+              </button>
+            )}
           </div>
         </form>
       </div>
@@ -1940,6 +2100,125 @@ function ReceivablesView({ onRefresh }: { onRefresh: () => void }) {
             <p>Seleccione un cliente para ver su historial y registrar abonos.</p>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function FixedCostsView() {
+  const [fixedCosts, setFixedCosts] = useState<any[]>([]);
+  const [formData, setFormData] = useState({ description: '', amount: '' });
+
+  const fetchFixedCosts = async () => {
+    const res = await fetch('/api/fixed-costs');
+    if (res.ok) {
+      setFixedCosts(await res.json());
+    }
+  };
+
+  useEffect(() => {
+    fetchFixedCosts();
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.description || !formData.amount) return;
+
+    const res = await fetch('/api/fixed-costs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        description: formData.description,
+        amount: parseFloat(formData.amount)
+      })
+    });
+
+    if (res.ok) {
+      toast.success("Costo fijo registrado");
+      setFormData({ description: '', amount: '' });
+      fetchFixedCosts();
+    } else {
+      const err = await res.json();
+      toast.error(err.error || "Error al registrar costo fijo");
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!window.confirm("¿Estás seguro de eliminar este costo fijo?")) return;
+    const res = await fetch(`/api/fixed-costs/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      toast.success("Costo fijo eliminado");
+      fetchFixedCosts();
+    }
+  };
+
+  const totalFixedCosts = fixedCosts.reduce((sum, item) => sum + item.amount, 0);
+
+  return (
+    <div className="p-8 max-w-5xl mx-auto space-y-8">
+      <div className="flex justify-between items-start">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight text-[var(--ink)]">Costos Fijos</h2>
+          <p className="text-sm text-gray-500 mt-1">Gestión de gastos operativos recurrentes (Luz, Agua, Arriendo, etc).</p>
+        </div>
+        <div className="bg-white p-6 rounded-2xl border border-[var(--line)] shadow-lg border-l-4 border-l-[var(--primary)]">
+          <div className="text-[10px] font-bold uppercase text-gray-400 mb-1 tracking-widest">Total Costo Fijo Mensual</div>
+          <div className="text-4xl font-mono font-bold text-[var(--primary)]">${totalFixedCosts.toLocaleString()}</div>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit} className="bg-white p-6 rounded-2xl border border-[var(--line)] shadow-sm flex flex-wrap gap-4 items-end">
+        <div className="flex-1 min-w-[300px]">
+          <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Glosa / Descripción</label>
+          <input
+            type="text"
+            required
+            value={formData.description}
+            onChange={e => setFormData({ ...formData, description: e.target.value })}
+            placeholder="Ej. Arriendo Local, Luz, Agua, Pago Banco..."
+            className="w-full bg-gray-50 border border-[var(--line)] p-3 text-sm focus:bg-white rounded-xl focus:outline-none focus:ring-2 ring-[var(--primary)]/20"
+          />
+        </div>
+        <div className="w-48">
+          <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Monto Mensual ($)</label>
+          <input
+            type="number"
+            required
+            min="1"
+            value={formData.amount}
+            onChange={e => setFormData({ ...formData, amount: e.target.value })}
+            className="w-full bg-gray-50 border border-[var(--line)] p-3 text-sm font-bold focus:bg-white rounded-xl focus:outline-none focus:ring-2 ring-[var(--primary)]/20"
+          />
+        </div>
+        <button type="submit" className="bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white font-bold uppercase tracking-wider text-xs px-8 py-3 rounded-xl transition-all h-[46px] shadow-lg shadow-blue-100 flex items-center gap-2">
+          <Plus size={16} /> Agregar Costo
+        </button>
+      </form>
+
+      <div className="border border-[var(--line)] bg-white rounded-2xl overflow-hidden shadow-sm">
+        <div className="grid grid-cols-[1fr_3fr_1.5fr_100px] p-4 border-b border-[var(--line)] bg-gray-50/50 text-xs font-bold uppercase text-gray-500">
+          <div>Fecha Registro</div>
+          <div>Glosa / Descripción</div>
+          <div className="text-right">Monto Mensual</div>
+          <div className="text-center">Acciones</div>
+        </div>
+        <div className="divide-y divide-[var(--line)] max-h-96 overflow-auto">
+          {fixedCosts.map((item: any) => (
+            <div key={item.id} className="grid grid-cols-[1fr_3fr_1.5fr_100px] p-4 text-sm items-center hover:bg-gray-50/50 transition-colors">
+              <div className="text-gray-500 font-mono text-xs">{new Date(item.created_at).toLocaleDateString()}</div>
+              <div className="font-bold uppercase">{item.description}</div>
+              <div className="text-right font-mono font-bold text-[var(--ink)]">${item.amount.toLocaleString()}</div>
+              <div className="flex justify-center">
+                <button onClick={() => handleDelete(item.id)} className="p-2 text-gray-400 hover:text-red-600 transition-colors">
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </div>
+          ))}
+          {fixedCosts.length === 0 && (
+            <div className="p-8 text-center text-gray-400 italic text-sm">No hay costos fijos registrados.</div>
+          )}
+        </div>
       </div>
     </div>
   );

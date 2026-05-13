@@ -13,7 +13,8 @@ db.exec(`
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     type TEXT NOT NULL,
-    sale_price REAL NOT NULL
+    sale_price REAL NOT NULL,
+    active INTEGER DEFAULT 1
   );
 
   CREATE TABLE IF NOT EXISTS batches (
@@ -36,6 +37,12 @@ db.exec(`
     FOREIGN KEY (product_id) REFERENCES products(id)
   );
 `);
+
+try {
+  db.exec(`ALTER TABLE products ADD COLUMN active INTEGER DEFAULT 1`);
+} catch (e) {
+  // Ignore if column already exists
+}
 
 const tableInfoSales = db.prepare("PRAGMA table_info(sales)").all() as any[];
 if (!tableInfoSales.some(col => col.name === 'ticket_id')) {
@@ -83,6 +90,13 @@ db.exec(`
     method TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS fixed_costs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    description TEXT NOT NULL,
+    amount REAL NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 
 async function startServer() {
@@ -93,6 +107,9 @@ async function startServer() {
 
   // Get all products with total stock and alert status
   app.get('/api/products', (req, res) => {
+    const includeInactive = req.query.includeInactive === 'true';
+    const whereClause = includeInactive ? '' : 'WHERE p.active = 1';
+    
     const products = db.prepare(`
       SELECT 
         p.*, 
@@ -101,6 +118,7 @@ async function startServer() {
         (SELECT cost FROM batches b3 WHERE b3.product_id = p.id AND b3.quantity > 0 ORDER BY b3.created_at ASC LIMIT 1) as cost
       FROM products p
       LEFT JOIN batches b ON p.id = b.product_id
+      ${whereClause}
       GROUP BY p.id
     `).all();
     res.json(products);
@@ -211,24 +229,22 @@ async function startServer() {
     }
   });
 
-  // Delete Product
+  // Delete Product (Soft Delete)
   app.delete('/api/products/:id', (req, res) => {
     const { id } = req.params;
     try {
-      const transaction = db.transaction(() => {
-        // Enforce data integrity: do not delete products that have been sold
-        const salesCount = db.prepare('SELECT COUNT(*) as count FROM sales WHERE product_id = ?').get(id) as any;
-        if (salesCount.count > 0) {
-          throw new Error('No se puede eliminar un producto con historial de ventas. Para sacarlo de tu catálogo, simplemente déjalo con Stock 0.');
-        }
+      db.prepare('UPDATE products SET active = 0 WHERE id = ?').run(id);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
 
-        // Delete all associated batches first to prevent orphans
-        db.prepare('DELETE FROM batches WHERE product_id = ?').run(id);
-
-        // Finally, delete the product
-        db.prepare('DELETE FROM products WHERE id = ?').run(id);
-      });
-      transaction();
+  // Restore Product
+  app.post('/api/products/:id/restore', (req, res) => {
+    const { id } = req.params;
+    try {
+      db.prepare('UPDATE products SET active = 1 WHERE id = ?').run(id);
       res.json({ success: true });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -542,6 +558,43 @@ async function startServer() {
     }
   });
 
+  // --- Fixed Costs ---
+
+  app.get('/api/fixed-costs', (req, res) => {
+    try {
+      const fixedCosts = db.prepare('SELECT * FROM fixed_costs ORDER BY created_at DESC').all();
+      res.json(fixedCosts);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.post('/api/fixed-costs', (req, res) => {
+    const { description, amount } = req.body;
+    try {
+      if (!description || !amount) {
+        throw new Error('Todos los campos son requeridos');
+      }
+      db.prepare(`
+        INSERT INTO fixed_costs (description, amount)
+        VALUES (?, ?)
+      `).run(description.toUpperCase(), amount);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete('/api/fixed-costs/:id', (req, res) => {
+    const { id } = req.params;
+    try {
+      db.prepare('DELETE FROM fixed_costs WHERE id = ?').run(id);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   // --- Customers & Receivables ---
 
   app.get('/api/customers', (req, res) => {
@@ -691,9 +744,12 @@ async function startServer() {
         SUM(quantity * sale_price) as total_revenue,
         SUM(total_cost) as total_cost,
         SUM(quantity * sale_price) - SUM(total_cost) as total_profit,
+        SUM(CASE WHEN payment_method IN ('cash', 'card') THEN quantity * sale_price ELSE 0 END) as collected_revenue,
+        SUM(CASE WHEN payment_method IN ('cash', 'card') THEN total_cost ELSE 0 END) as collected_cost,
+        SUM(CASE WHEN payment_method = 'cuenta_por_cobrar' THEN quantity * sale_price ELSE 0 END) as receivables_revenue,
+        SUM(CASE WHEN payment_method = 'cuenta_por_cobrar' THEN total_cost ELSE 0 END) as receivables_cost,
         SUM(CASE WHEN payment_method = 'cash' THEN quantity * sale_price ELSE 0 END) as cash_revenue_sales,
-        SUM(CASE WHEN payment_method = 'card' THEN quantity * sale_price ELSE 0 END) as card_revenue_sales,
-        SUM(CASE WHEN payment_method = 'cuenta_por_cobrar' THEN quantity * sale_price ELSE 0 END) as receivables_revenue
+        SUM(CASE WHEN payment_method = 'card' THEN quantity * sale_price ELSE 0 END) as card_revenue_sales
       FROM sales
       WHERE ${dateFilter} AND status != 'voided'
     `).get(...params) as any;
@@ -735,7 +791,10 @@ async function startServer() {
       SELECT SUM(quantity * cost) as value FROM batches WHERE quantity > 0
     `).get() as any;
 
-    res.json({ topProducts, categoryAnalysis, summary: { ...summary, ...expensesSummary, total_inventory_value: totalInventoryValue.value || 0 }, inventoryByFamily });
+    const totalFixedCostsRow = db.prepare(`SELECT SUM(amount) as total FROM fixed_costs`).get() as any;
+    const totalFixedCosts = totalFixedCostsRow.total || 0;
+
+    res.json({ topProducts, categoryAnalysis, summary: { ...summary, ...expensesSummary, total_inventory_value: totalInventoryValue.value || 0, total_fixed_costs: totalFixedCosts }, inventoryByFamily });
   });
 
   // --- Vite Setup ---
