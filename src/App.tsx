@@ -2000,11 +2000,22 @@ function ReceivablesView({ onRefresh }: { onRefresh: () => void }) {
 
   const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!paymentAmount || parseFloat(paymentAmount) <= 0) return;
+    const numAmount = parseFloat(paymentAmount);
+    if (!numAmount || numAmount <= 0) return;
+
+    // Client-side validation: find current debt in the list
+    const debtorInfo = debtors.find(d => d.id === selectedDebtor.id);
+    const currentDebt = debtorInfo ? debtorInfo.total_debt : 0;
+
+    if (numAmount > currentDebt) {
+      toast.error(`El abono ($${numAmount.toLocaleString()}) no puede superar la deuda ($${currentDebt.toLocaleString()})`);
+      return;
+    }
+
     const res = await fetch(`/api/receivables/${selectedDebtor.id}/pay`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ amount: parseFloat(paymentAmount), method: paymentMethod })
+      body: JSON.stringify({ amount: numAmount, method: paymentMethod })
     });
     if (res.ok) {
       toast.success('Abono registrado');

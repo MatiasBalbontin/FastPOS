@@ -694,10 +694,25 @@ async function startServer() {
     const { amount, method } = req.body;
     try {
       if (!amount || !method) throw new Error("Monto y método son obligatorios");
+      
+      const numAmount = parseFloat(amount);
+      if (isNaN(numAmount) || numAmount <= 0) throw new Error("Monto inválido");
+
+      // Calculate current debt
+      const debtData = db.prepare(`
+        SELECT 
+          COALESCE((SELECT SUM(quantity * sale_price) FROM sales WHERE customer_id = ? AND payment_method = 'cuenta_por_cobrar' AND status = 'completed'), 0) -
+          COALESCE((SELECT SUM(amount) FROM customer_payments WHERE customer_id = ? AND status = 'completed'), 0) as debt
+      `).get(customer_id, customer_id) as any;
+
+      if (numAmount > debtData.debt) {
+        throw new Error(`El abono ($${numAmount.toLocaleString()}) no puede superar la deuda pendiente ($${debtData.debt.toLocaleString()})`);
+      }
+
       db.prepare(`
         INSERT INTO customer_payments (customer_id, amount, method)
         VALUES (?, ?, ?)
-      `).run(customer_id, amount, method);
+      `).run(customer_id, numAmount, method);
       res.json({ success: true });
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -771,11 +786,68 @@ async function startServer() {
       WHERE ${dateFilter}
     `).get(...params) as any;
 
-    const cash_revenue = (summary.cash_revenue_sales || 0) + (paymentsSummary.cash_payments || 0);
-    const card_revenue = (summary.card_revenue_sales || 0) + (paymentsSummary.card_payments || 0);
-    summary.cash_revenue = cash_revenue;
-    summary.card_revenue = card_revenue;
-    summary.total_receivables = (summary.receivables_revenue || 0) - (paymentsSummary.cash_payments || 0) - (paymentsSummary.card_payments || 0);
+    // Define cumulative date filter up to endDate (or now)
+    let cumulativeDateFilter = "";
+    let cumulativeParams: any[] = [];
+
+    if (startDate && endDate) {
+      cumulativeDateFilter = "datetime(created_at) <= datetime(?)";
+      cumulativeParams = [endDate];
+    } else {
+      cumulativeDateFilter = "1=1";
+      cumulativeParams = [];
+    }
+
+    // Cumulative sales query
+    const cumulativeSales = db.prepare(`
+      SELECT 
+        SUM(CASE WHEN payment_method = 'cash' THEN quantity * sale_price ELSE 0 END) as cash_revenue_sales,
+        SUM(CASE WHEN payment_method = 'card' THEN quantity * sale_price ELSE 0 END) as card_revenue_sales,
+        SUM(CASE WHEN payment_method = 'cuenta_por_cobrar' THEN quantity * sale_price ELSE 0 END) as receivables_revenue
+      FROM sales
+      WHERE ${cumulativeDateFilter} AND status != 'voided'
+    `).get(...cumulativeParams) as any;
+
+    // Cumulative payments query
+    const cumulativePayments = db.prepare(`
+      SELECT 
+        SUM(CASE WHEN method = 'cash' THEN amount ELSE 0 END) as cash_payments,
+        SUM(CASE WHEN method = 'card' THEN amount ELSE 0 END) as card_payments
+      FROM customer_payments
+      WHERE ${cumulativeDateFilter} AND status != 'voided'
+    `).get(...cumulativeParams) as any;
+
+    // Cumulative expenses query
+    const cumulativeExpenses = db.prepare(`
+      SELECT 
+        SUM(CASE WHEN method = 'cash' THEN amount ELSE 0 END) as cash_expenses,
+        SUM(CASE WHEN method = 'card' THEN amount ELSE 0 END) as card_expenses
+      FROM expenses
+      WHERE ${cumulativeDateFilter}
+    `).get(...cumulativeParams) as any;
+
+    // Calculate net cumulative values
+    const cumCashSales = cumulativeSales?.cash_revenue_sales || 0;
+    const cumCashPayments = cumulativePayments?.cash_payments || 0;
+    const cumCashExpenses = cumulativeExpenses?.cash_expenses || 0;
+    const netCumulativeCash = cumCashSales + cumCashPayments - cumCashExpenses;
+
+    const cumCardSales = cumulativeSales?.card_revenue_sales || 0;
+    const cumCardPayments = cumulativePayments?.card_payments || 0;
+    const cumCardExpenses = cumulativeExpenses?.card_expenses || 0;
+    const netCumulativeCard = cumCardSales + cumCardPayments - cumCardExpenses;
+
+    const cumReceivablesRevenue = cumulativeSales?.receivables_revenue || 0;
+    const cumulativeReceivables = Math.max(0, cumReceivablesRevenue - cumCashPayments - cumCardPayments);
+
+    // Keep period-specific values for the red box and other calculations
+    const periodCashExpenses = expensesSummary.cash_expenses || 0;
+    const periodCardExpenses = expensesSummary.card_expenses || 0;
+
+    // Map to fields expected by frontend
+    summary.cash_revenue = netCumulativeCash + periodCashExpenses;
+    summary.card_revenue = netCumulativeCard + periodCardExpenses;
+    summary.total_receivables = cumulativeReceivables;
 
 
 
