@@ -82,6 +82,13 @@ try {
   // Ignore if column already exists
 }
 
+try { db.exec(`ALTER TABLE customers ADD COLUMN type TEXT DEFAULT 'cliente'`); } catch (e) {}
+try { db.exec(`ALTER TABLE customers ADD COLUMN address TEXT`); } catch (e) {}
+try { db.exec(`ALTER TABLE customers ADD COLUMN contact TEXT`); } catch (e) {}
+try { db.exec(`ALTER TABLE customers ADD COLUMN phone TEXT`); } catch (e) {}
+try { db.exec(`ALTER TABLE customers ADD COLUMN email TEXT`); } catch (e) {}
+
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS expenses (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -98,6 +105,55 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 `);
+
+try {
+  db.exec(`ALTER TABLE expenses ADD COLUMN status TEXT DEFAULT 'completed'`);
+} catch (e) {
+  // Ignore if column already exists
+}
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS company_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS quotes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    customer_id INTEGER,
+    client_name TEXT NOT NULL,
+    client_rut TEXT,
+    client_contact TEXT,
+    client_phone TEXT,
+    client_email TEXT,
+    condition TEXT DEFAULT 'Contado - CLP',
+    validity_days INTEGER DEFAULT 30,
+    glosa TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS quote_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    quote_id INTEGER NOT NULL,
+    product_id TEXT,
+    name TEXT NOT NULL,
+    quantity REAL NOT NULL,
+    unit TEXT DEFAULT 'UNID',
+    sale_price REAL NOT NULL,
+    FOREIGN KEY (quote_id) REFERENCES quotes(id) ON DELETE CASCADE
+  );
+`);
+
+const checkSettings = db.prepare("SELECT COUNT(*) as count FROM company_settings").get() as { count: number };
+if (checkSettings.count === 0) {
+  const insertSetting = db.prepare("INSERT INTO company_settings (key, value) VALUES (?, ?)");
+  insertSetting.run('company_name', 'Comercializadora Carla Patricia Espinosa Zárate EIRL');
+  insertSetting.run('company_rut', '76.794.328-8');
+  insertSetting.run('company_address', 'POLHUIN S/N, PELLUHUE');
+  insertSetting.run('company_phone', '977685797');
+  insertSetting.run('company_email', 'haciendasanjuan@gmail.com');
+  insertSetting.run('company_bank_details', 'Cuenta Corriente del Banco del Estado, Nº 44700072301 a nombre de COMERCIALIZADORA CARLA PATRICIA ESPINOSA ZARATE E.I.R.L.; Email:haciendasanjuan@gmail.com; RUT 76.794.328-8');
+}
 
 async function startServer() {
   const app = express();
@@ -423,13 +479,17 @@ async function startServer() {
     try {
       let salesDateFilter = "";
       let paymentsDateFilter = "";
+      let expensesDateFilter = "";
       let params: any[] = [];
       let params2: any[] = [];
+      let params3: any[] = [];
       if (startDate && endDate) {
         salesDateFilter = "AND datetime(s.created_at) BETWEEN datetime(?) AND datetime(?)";
         paymentsDateFilter = "AND datetime(p.created_at) BETWEEN datetime(?) AND datetime(?)";
+        expensesDateFilter = "AND datetime(e.created_at) BETWEEN datetime(?) AND datetime(?)";
         params = [startDate, endDate];
         params2 = [startDate, endDate];
+        params3 = [startDate, endDate];
       }
 
       const tickets = db.prepare(`
@@ -469,7 +529,27 @@ async function startServer() {
         WHERE 1=1 ${paymentsDateFilter}
       `).all(...params2) as any[];
 
-      const combined = [...tickets, ...payments].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      const expenses = db.prepare(`
+        SELECT 
+          e.id as id, 
+          'expense' as type,
+          e.method as method,
+          e.status,
+          e.created_at,
+          e.amount as total_amount,
+          json_group_array(json_object(
+            'product_id', '',
+            'name', e.description,
+            'quantity', 1,
+            'sale_price', e.amount
+          )) as items,
+          NULL as customer_name
+        FROM expenses e
+        WHERE 1=1 ${expensesDateFilter}
+        GROUP BY e.id
+      `).all(...params3) as any[];
+
+      const combined = [...tickets, ...payments, ...expenses].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       
       const limited = (startDate && endDate) ? combined : combined.slice(0, 100);
 
@@ -558,6 +638,227 @@ async function startServer() {
     }
   });
 
+  // Void Expense
+  app.post('/api/expenses/void/:id', (req, res) => {
+    const { id } = req.params;
+    try {
+      db.prepare("UPDATE expenses SET status = 'voided' WHERE id = ?").run(id);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // --- Company Settings ---
+  app.get('/api/company-settings', (req, res) => {
+    try {
+      const settings = db.prepare("SELECT * FROM company_settings").all() as { key: string, value: string }[];
+      const config: Record<string, string> = {};
+      settings.forEach(s => {
+        config[s.key] = s.value;
+      });
+      res.json(config);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.post('/api/company-settings', (req, res) => {
+    const settings = req.body;
+    try {
+      const transaction = db.transaction(() => {
+        const insertSetting = db.prepare("INSERT INTO company_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value");
+        for (const [key, value] of Object.entries(settings)) {
+          insertSetting.run(key, String(value));
+        }
+      });
+      transaction();
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  // --- Quotes Module ---
+  app.get('/api/quotes', (req, res) => {
+    try {
+      const quotes = db.prepare(`
+        SELECT q.*, 
+               COALESCE(SUM(qi.quantity * qi.sale_price), 0) as total_amount
+        FROM quotes q
+        LEFT JOIN quote_items qi ON q.id = qi.quote_id
+        GROUP BY q.id
+        ORDER BY q.created_at DESC
+      `).all();
+      res.json(quotes);
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.get('/api/quotes/:id', (req, res) => {
+    const { id } = req.params;
+    try {
+      const quote = db.prepare("SELECT * FROM quotes WHERE id = ?").get(id) as any;
+      if (!quote) return res.status(404).json({ error: 'Cotización no encontrada' });
+      const items = db.prepare("SELECT * FROM quote_items WHERE quote_id = ?").all(id);
+      res.json({ ...quote, items });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.post('/api/quotes', (req, res) => {
+    const {
+      customer_id,
+      client_name,
+      client_rut,
+      client_contact,
+      client_phone,
+      client_email,
+      condition,
+      validity_days,
+      glosa,
+      items
+    } = req.body;
+
+    try {
+      if (!client_name) {
+        throw new Error('Nombre del cliente es obligatorio');
+      }
+      if (!items || !Array.isArray(items) || items.length === 0) {
+        throw new Error('Debe agregar al menos un item a la cotización');
+      }
+
+      const transaction = db.transaction(() => {
+        const quoteResult = db.prepare(`
+          INSERT INTO quotes (
+            customer_id, client_name, client_rut, client_contact, 
+            client_phone, client_email, condition, validity_days, glosa
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          customer_id || null,
+          client_name.toUpperCase(),
+          client_rut || null,
+          client_contact || null,
+          client_phone || null,
+          client_email || null,
+          condition || 'Contado - CLP',
+          parseInt(validity_days, 10) || 30,
+          glosa || null
+        );
+
+        const quoteId = quoteResult.lastInsertRowid;
+        const insertItem = db.prepare(`
+          INSERT INTO quote_items (quote_id, product_id, name, quantity, unit, sale_price)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `);
+
+        for (const item of items) {
+          insertItem.run(
+            quoteId,
+            item.product_id || null,
+            item.name.toUpperCase(),
+            parseFloat(item.quantity) || 0,
+            item.unit || 'UNID',
+            parseFloat(item.sale_price) || 0
+          );
+        }
+        return quoteId;
+      });
+
+      const quoteId = transaction();
+      res.json({ success: true, id: quoteId });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.put('/api/quotes/:id', (req, res) => {
+    const { id } = req.params;
+    const {
+      customer_id,
+      client_name,
+      client_rut,
+      client_contact,
+      client_phone,
+      client_email,
+      condition,
+      validity_days,
+      glosa,
+      items
+    } = req.body;
+
+    try {
+      if (!client_name) {
+        throw new Error('Nombre del cliente es obligatorio');
+      }
+      if (!items || !Array.isArray(items) || items.length === 0) {
+        throw new Error('Debe agregar al menos un item a la cotización');
+      }
+
+      const transaction = db.transaction(() => {
+        db.prepare(`
+          UPDATE quotes SET
+            customer_id = ?,
+            client_name = ?,
+            client_rut = ?,
+            client_contact = ?,
+            client_phone = ?,
+            client_email = ?,
+            condition = ?,
+            validity_days = ?,
+            glosa = ?
+          WHERE id = ?
+        `).run(
+          customer_id || null,
+          client_name.toUpperCase(),
+          client_rut || null,
+          client_contact || null,
+          client_phone || null,
+          client_email || null,
+          condition || 'Contado - CLP',
+          parseInt(validity_days, 10) || 30,
+          glosa || null,
+          id
+        );
+
+        db.prepare("DELETE FROM quote_items WHERE quote_id = ?").run(id);
+
+        const insertItem = db.prepare(`
+          INSERT INTO quote_items (quote_id, product_id, name, quantity, unit, sale_price)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `);
+
+        for (const item of items) {
+          insertItem.run(
+            id,
+            item.product_id || null,
+            item.name.toUpperCase(),
+            parseFloat(item.quantity) || 0,
+            item.unit || 'UNID',
+            parseFloat(item.sale_price) || 0
+          );
+        }
+      });
+
+      transaction();
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.delete('/api/quotes/:id', (req, res) => {
+    const { id } = req.params;
+    try {
+      db.prepare("DELETE FROM quotes WHERE id = ?").run(id);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  });
+
   // --- Fixed Costs ---
 
   app.get('/api/fixed-costs', (req, res) => {
@@ -598,8 +899,16 @@ async function startServer() {
   // --- Customers & Receivables ---
 
   app.get('/api/customers', (req, res) => {
+    const { type } = req.query;
     try {
-      const customers = db.prepare('SELECT * FROM customers ORDER BY first_name ASC').all();
+      let query = 'SELECT * FROM customers';
+      const params: any[] = [];
+      if (type) {
+        query += ' WHERE type = ?';
+        params.push(type);
+      }
+      query += ' ORDER BY first_name ASC';
+      const customers = db.prepare(query).all(...params);
       res.json(customers);
     } catch (error: any) {
       res.status(400).json({ error: error.message });
@@ -607,20 +916,81 @@ async function startServer() {
   });
 
   app.post('/api/customers', (req, res) => {
-    const { rut, first_name, last_name } = req.body;
+    const { rut, first_name, last_name, type, address, contact, phone, email } = req.body;
     try {
-      if (!first_name || !last_name) throw new Error("Nombre y apellido son obligatorios");
+      if (!first_name) throw new Error("Nombre / Razón Social es obligatorio");
       const result = db.prepare(`
-        INSERT INTO customers (rut, first_name, last_name)
-        VALUES (?, ?, ?)
-      `).run(rut || null, first_name.toUpperCase(), last_name.toUpperCase());
+        INSERT INTO customers (rut, first_name, last_name, type, address, contact, phone, email)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        rut || null,
+        first_name.toUpperCase(),
+        (last_name || '').toUpperCase(),
+        type || 'cliente',
+        address || '',
+        contact || '',
+        phone || '',
+        email || ''
+      );
       res.json({ success: true, id: result.lastInsertRowid });
     } catch (error: any) {
       if (error.message.includes('UNIQUE constraint failed')) {
-        res.status(400).json({ error: 'Ya existe un cliente con este RUT' });
+        res.status(400).json({ error: 'Ya existe un registro con este RUT o Razón Social' });
       } else {
         res.status(400).json({ error: error.message });
       }
+    }
+  });
+
+  app.put('/api/customers/:id', (req, res) => {
+    const { id } = req.params;
+    const { rut, first_name, last_name, type, address, contact, phone, email } = req.body;
+    try {
+      if (!first_name) throw new Error("Nombre / Razón Social es obligatorio");
+      db.prepare(`
+        UPDATE customers SET
+          rut = ?,
+          first_name = ?,
+          last_name = ?,
+          type = ?,
+          address = ?,
+          contact = ?,
+          phone = ?,
+          email = ?
+        WHERE id = ?
+      `).run(
+        rut || null,
+        first_name.toUpperCase(),
+        (last_name || '').toUpperCase(),
+        type || 'cliente',
+        address || '',
+        contact || '',
+        phone || '',
+        email || '',
+        id
+      );
+      res.json({ success: true });
+    } catch (error: any) {
+      if (error.message.includes('UNIQUE constraint failed')) {
+        res.status(400).json({ error: 'Ya existe un registro con este RUT' });
+      } else {
+        res.status(400).json({ error: error.message });
+      }
+    }
+  });
+
+  app.delete('/api/customers/:id', (req, res) => {
+    const { id } = req.params;
+    try {
+      const salesCheck = db.prepare('SELECT COUNT(*) as count FROM sales WHERE customer_id = ?').get(id) as { count: number };
+      const paymentsCheck = db.prepare('SELECT COUNT(*) as count FROM customer_payments WHERE customer_id = ?').get(id) as { count: number };
+      if (salesCheck.count > 0 || paymentsCheck.count > 0) {
+        throw new Error('No se puede eliminar esta entidad porque tiene transacciones asociadas.');
+      }
+      db.prepare('DELETE FROM customers WHERE id = ?').run(id);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
     }
   });
 
@@ -783,7 +1153,7 @@ async function startServer() {
         SUM(CASE WHEN method = 'cash' THEN amount ELSE 0 END) as cash_expenses,
         SUM(CASE WHEN method = 'card' THEN amount ELSE 0 END) as card_expenses
       FROM expenses
-      WHERE ${dateFilter}
+      WHERE ${dateFilter} AND status != 'voided'
     `).get(...params) as any;
 
     // Define cumulative date filter up to endDate (or now)
@@ -823,7 +1193,7 @@ async function startServer() {
         SUM(CASE WHEN method = 'cash' THEN amount ELSE 0 END) as cash_expenses,
         SUM(CASE WHEN method = 'card' THEN amount ELSE 0 END) as card_expenses
       FROM expenses
-      WHERE ${cumulativeDateFilter}
+      WHERE ${cumulativeDateFilter} AND status != 'voided'
     `).get(...cumulativeParams) as any;
 
     // Calculate net cumulative values
