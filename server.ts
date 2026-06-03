@@ -157,7 +157,8 @@ if (checkSettings.count === 0) {
 
 async function startServer() {
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
   // --- API Routes ---
 
@@ -699,7 +700,12 @@ async function startServer() {
   app.get('/api/quotes/:id', (req, res) => {
     const { id } = req.params;
     try {
-      const quote = db.prepare("SELECT * FROM quotes WHERE id = ?").get(id) as any;
+      const quote = db.prepare(`
+        SELECT q.*, c.address as client_address
+        FROM quotes q
+        LEFT JOIN customers c ON q.customer_id = c.id
+        WHERE q.id = ?
+      `).get(id) as any;
       if (!quote) return res.status(404).json({ error: 'Cotización no encontrada' });
       const items = db.prepare("SELECT * FROM quote_items WHERE quote_id = ?").all(id);
       res.json({ ...quote, items });

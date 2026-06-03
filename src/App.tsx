@@ -3109,76 +3109,100 @@ function QuotesView({ products }: { products: Product[] }) {
         issuer = { ...issuer, ...data };
       }
 
+      // Calculate logo dimensions keeping aspect ratio (max 45w x 18h)
+      let logoWidth = 35;
+      let logoHeight = 15;
+      if (issuer.company_logo) {
+        try {
+          const img = new Image();
+          img.src = issuer.company_logo;
+          await new Promise((resolve) => {
+            img.onload = () => {
+              const ratio = img.naturalWidth / img.naturalHeight;
+              const maxW = 45;
+              const maxH = 18;
+              if (ratio > maxW / maxH) {
+                logoWidth = maxW;
+                logoHeight = maxW / ratio;
+              } else {
+                logoHeight = maxH;
+                logoWidth = maxH * ratio;
+              }
+              resolve(null);
+            };
+            img.onerror = () => {
+              resolve(null);
+            };
+          });
+        } catch (e) {
+          console.error("Error reading logo dimensions:", e);
+        }
+      }
+
       const doc = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
         format: 'letter'
       });
 
-      // Draw custom logo if uploaded, otherwise fallback to E&Z text logo
+      // Draw custom logo if uploaded, otherwise fallback to issuing company name
+      let detailsStartY = 24;
       if (issuer.company_logo) {
         try {
-          doc.addImage(issuer.company_logo, 'PNG', 15, 11, 35, 15, undefined, 'FAST');
+          doc.addImage(issuer.company_logo, 'PNG', 15, 11, logoWidth, logoHeight, undefined, 'FAST');
+          const logoBottomY = 11 + logoHeight;
+          detailsStartY = Math.max(30, logoBottomY + 3);
         } catch (err) {
-          console.error("Error drawing company logo, falling back to text logo:", err);
-          // Fallback text logo
-          doc.setFillColor(16, 185, 129); // Green
-          doc.ellipse(23, 19, 5, 2.5, 'F');
-          doc.setFillColor(245, 158, 11); // Yellow
-          doc.ellipse(20, 22, 4, 2.2, 'F');
-          
+          console.error("Error drawing company logo, falling back to company name:", err);
           doc.setFont("helvetica", "bold");
-          doc.setFontSize(16);
-          doc.setTextColor(34, 197, 94);
-          doc.text("E&Z", 30, 20);
-          doc.setFontSize(10);
-          doc.setTextColor(245, 158, 11);
-          doc.text("agro", 30, 24);
+          doc.setFontSize(13);
+          doc.setTextColor(0, 94, 184); // Premium blue
+          doc.text(issuer.company_name.toUpperCase(), 15, 18);
+          detailsStartY = 24;
         }
       } else {
-        // Fallback text logo
-        doc.setFillColor(16, 185, 129); // Green
-        doc.ellipse(23, 19, 5, 2.5, 'F');
-        doc.setFillColor(245, 158, 11); // Yellow
-        doc.ellipse(20, 22, 4, 2.2, 'F');
-        
         doc.setFont("helvetica", "bold");
-        doc.setFontSize(16);
-        doc.setTextColor(34, 197, 94);
-        doc.text("E&Z", 30, 20);
-        doc.setFontSize(10);
-        doc.setTextColor(245, 158, 11);
-        doc.text("agro", 30, 24);
+        doc.setFontSize(13);
+        doc.setTextColor(0, 94, 184); // Premium blue
+        doc.text(issuer.company_name.toUpperCase(), 15, 18);
+        detailsStartY = 24;
       }
 
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(8);
+      doc.setFontSize(7.5);
       doc.setTextColor(80, 80, 80);
-      doc.text(issuer.company_address.toUpperCase(), 15, 33);
-      doc.text(`TELÉFONO: ${issuer.company_phone}`, 15, 37);
+      doc.text(issuer.company_address.toUpperCase(), 15, detailsStartY);
+
+      let phoneEmailText = `TELÉFONO: ${issuer.company_phone}`;
+      if (issuer.company_email) {
+        phoneEmailText += `    |    EMAIL: ${issuer.company_email.toLowerCase()}`;
+      }
+      doc.text(phoneEmailText, 15, detailsStartY + 4);
 
       // Blue Box for COTIZACIÓN (Centering headers)
       doc.setDrawColor(0, 94, 184);
-      doc.setLineWidth(0.5);
-      doc.rect(130, 10, 70, 25);
+      doc.setLineWidth(0.6);
+      
+      const nameLines = doc.splitTextToSize(issuer.company_name.toUpperCase(), 64);
+      const boxHeightTop = 23 + (nameLines.length * 3.5);
+      doc.rect(130, 10, 70, boxHeightTop);
       
       doc.setFont("helvetica", "bold");
       doc.setFontSize(13);
       doc.setTextColor(0, 94, 184);
-      doc.text("COTIZACIÓN", 165, 15.5, { align: 'center' });
+      doc.text("COTIZACIÓN", 165, 16, { align: 'center' });
       
       doc.setFontSize(9);
       doc.setTextColor(50, 50, 50);
-      doc.text(`Folio Nº ${quote.id}`, 165, 20.5, { align: 'center' });
-      doc.text(issuer.company_rut, 165, 25.5, { align: 'center' });
+      doc.text(`Folio Nº ${quote.id}`, 165, 21.5, { align: 'center' });
+      doc.text(issuer.company_rut, 165, 26.5, { align: 'center' });
       
-      doc.setFontSize(6.5);
+      doc.setFontSize(7);
       doc.setFont("helvetica", "bold");
-      const nameLines = doc.splitTextToSize(issuer.company_name.toUpperCase(), 66);
-      let currentBoxY = 29.5;
+      let currentBoxY = 31.5;
       nameLines.forEach((line: string) => {
         doc.text(line, 165, currentBoxY, { align: 'center' });
-        currentBoxY += 3;
+        currentBoxY += 3.5;
       });
 
       // Client Box (Prevent text overlaps)
@@ -3187,7 +3211,7 @@ function QuotesView({ products }: { products: Product[] }) {
       doc.setFillColor(255, 255, 255);
       
       const hasGlosa = !!quote.glosa;
-      const boxHeight = hasGlosa ? 37 : 32;
+      const boxHeight = hasGlosa ? 32 : 27.5;
       doc.rect(15, 45, 185, boxHeight);
 
       doc.setFillColor(240, 245, 255);
@@ -3201,72 +3225,55 @@ function QuotesView({ products }: { products: Product[] }) {
       doc.setFontSize(7.5);
       doc.setTextColor(0, 0, 0);
 
-      // Row 1
+      // Left Column: Customer details
       doc.setFont("helvetica", "bold");
       doc.text("Contacto:", 17, 55);
       doc.setFont("helvetica", "normal");
-      doc.text(quote.client_name.substring(0, 45).toUpperCase(), 42, 55);
+      const contactVal = quote.client_contact || quote.client_name;
+      doc.text(contactVal.substring(0, 45).toUpperCase(), 42, 55);
       
       doc.setFont("helvetica", "bold");
-      doc.text("Ejecutivo:", 112, 55);
+      doc.text("Teléfono:", 17, 59.5);
       doc.setFont("helvetica", "normal");
-      doc.text(quote.client_contact ? quote.client_contact.toUpperCase() : "NELSON HENRIQUEZ", 138, 55);
-
-      // Row 2
-      doc.setFont("helvetica", "bold");
-      doc.text("Fono Contacto:", 17, 59.5);
-      doc.setFont("helvetica", "normal");
-      doc.text(quote.client_phone || '', 42, 59.5);
+      doc.text(quote.client_phone || 'NO ESPECIFICADO', 42, 59.5);
 
       doc.setFont("helvetica", "bold");
-      doc.text("Fono Ejecutivo:", 112, 59.5);
+      doc.text("Email:", 17, 64);
       doc.setFont("helvetica", "normal");
-      doc.text("923712084", 138, 59.5);
-
-      // Row 3
-      doc.setFont("helvetica", "bold");
-      doc.text("Email Contacto:", 17, 64);
-      doc.setFont("helvetica", "normal");
-      doc.text(quote.client_email || '', 42, 64);
+      doc.text(quote.client_email || 'NO ESPECIFICADO', 42, 64);
 
       doc.setFont("helvetica", "bold");
-      doc.text("Email Ejecutivo:", 112, 64);
+      doc.text("Dirección:", 17, 68.5);
       doc.setFont("helvetica", "normal");
-      doc.text("administracion@eyzagro.cl", 138, 64);
+      doc.text((quote.client_address || 'NO ESPECIFICADA').toUpperCase(), 42, 68.5);
 
-      // Row 4
+      // Right Column: Quote commercial details
       doc.setFont("helvetica", "bold");
-      doc.text("Condición:", 17, 68.5);
+      doc.text("Condición:", 112, 55);
       doc.setFont("helvetica", "normal");
-      doc.text(quote.condition.toUpperCase(), 42, 68.5);
+      doc.text(quote.condition.toUpperCase(), 138, 55);
 
-      doc.setFont("helvetica", "bold");
-      doc.text("País:", 112, 68.5);
-      doc.setFont("helvetica", "normal");
-      doc.text("CHILE", 138, 68.5);
-
-      // Row 5
       const issueDate = new Date(quote.created_at);
       const validityVal = parseInt(quote.validity_days, 10) || 30;
       const validDate = new Date(issueDate.getTime() + validityVal * 24 * 60 * 60 * 1000);
       const formatD = (d: Date) => d.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
       doc.setFont("helvetica", "bold");
-      doc.text("Emisión:", 17, 73);
+      doc.text("Emisión:", 112, 59.5);
       doc.setFont("helvetica", "normal");
-      doc.text(formatD(issueDate), 42, 73);
+      doc.text(formatD(issueDate), 138, 59.5);
 
       doc.setFont("helvetica", "bold");
-      doc.text("Valido hasta:", 112, 73);
+      doc.text("Valido hasta:", 112, 64);
       doc.setFont("helvetica", "normal");
-      doc.text(formatD(validDate), 138, 73);
+      doc.text(formatD(validDate), 138, 64);
 
       if (hasGlosa) {
         doc.setFont("helvetica", "bold");
-        doc.text("Glosa:", 17, 77.5);
+        doc.text("Glosa:", 17, 73);
         doc.setFont("helvetica", "normal");
         const glosaText = quote.glosa.substring(0, 80);
-        doc.text(glosaText, 42, 77.5);
+        doc.text(glosaText.toUpperCase(), 42, 73);
       }
 
       // Items Table
@@ -3302,21 +3309,21 @@ function QuotesView({ products }: { products: Product[] }) {
       autoTable(doc, {
         head: headers,
         body: tableRows,
-        startY: hasGlosa ? 86 : 81,
+        startY: hasGlosa ? 81 : 76,
         margin: { left: 15, right: 15 },
         theme: 'grid',
         styles: {
           fontSize: 7.5,
-          cellPadding: 1.5,
+          cellPadding: 2,
           valign: 'middle',
-          lineColor: [220, 220, 220],
-          lineWidth: 0.1
+          lineColor: [180, 180, 180],
+          lineWidth: 0.2
         },
         headStyles: {
-          fillColor: [255, 255, 255],
+          fillColor: [240, 245, 255],
           textColor: [0, 94, 184],
           fontStyle: 'bold',
-          lineWidth: 0.15,
+          lineWidth: 0.2,
           lineColor: [0, 94, 184]
         },
         columnStyles: {
@@ -3365,20 +3372,25 @@ function QuotesView({ products }: { products: Product[] }) {
           // Bank Details
           currentY += 20;
           doc.setDrawColor(200, 200, 200);
-          doc.rect(15, currentY, 185, 14);
+          
+          const bankLines = doc.splitTextToSize(issuer.company_bank_details, 150);
+          const bankBoxHeight = Math.max(14, (bankLines.length * 3.5) + 3);
+          
+          doc.rect(15, currentY, 185, bankBoxHeight);
           doc.setFillColor(245, 245, 245);
-          doc.rect(15.1, currentY + 0.1, 23.8, 13.8, 'F');
+          doc.rect(15.1, currentY + 0.1, 23.8, bankBoxHeight - 0.2, 'F');
           
           doc.setFont("helvetica", "bold");
           doc.setFontSize(7);
           doc.setTextColor(0, 0, 0);
-          doc.text("Datos", 17, currentY + 5.5);
-          doc.text("Bancarios:", 17, currentY + 9.5);
+          
+          const labelOffsetY = (bankBoxHeight / 2) - 1.55;
+          doc.text("Datos", 17, currentY + labelOffsetY);
+          doc.text("Bancarios:", 17, currentY + labelOffsetY + 3.5);
 
           doc.setFont("helvetica", "normal");
           doc.setFontSize(7);
-          const bankLines = doc.splitTextToSize(issuer.company_bank_details, 155);
-          doc.text(bankLines, 41, currentY + 5);
+          doc.text(bankLines, 41, currentY + 4);
         }
       });
 
