@@ -76,6 +76,45 @@ interface Analytics {
   inventoryByFamily: { type: string; total_stock: number; total_value: number }[];
 }
 
+// --- Search Normalization Utilities ---
+const normalizeString = (str: string | null | undefined): string => {
+  if (!str) return '';
+  return str
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+};
+
+const matchProduct = (product: Product, query: string): boolean => {
+  const queryNormalized = normalizeString(query).trim();
+  if (!queryNormalized) return false;
+  
+  const queryTokens = queryNormalized.split(/\s+/);
+  const nameNormalized = normalizeString(product.name);
+  const idNormalized = normalizeString(product.id);
+  
+  return queryTokens.every(token => 
+    nameNormalized.includes(token) || idNormalized.includes(token)
+  );
+};
+
+const matchCustomer = (customer: any, query: string): boolean => {
+  const queryNormalized = normalizeString(query).trim();
+  if (!queryNormalized) return false;
+  
+  const queryTokens = queryNormalized.split(/\s+/);
+  const fullNameNormalized = normalizeString(`${customer.first_name || ''} ${customer.last_name || ''}`);
+  const rutNormalized = normalizeString(customer.rut || '');
+  const contactNormalized = normalizeString(customer.contact || '');
+  
+  return queryTokens.every(token => 
+    fullNameNormalized.includes(token) || 
+    rutNormalized.includes(token) ||
+    contactNormalized.includes(token)
+  );
+};
+
 // --- Components ---
 
 const SidebarItem = ({ icon: Icon, label, active, onClick }: any) => (
@@ -348,11 +387,11 @@ function SalesView({ searchInputRef, onSale, products, onProductNotFound }: any)
   const [query, setQuery] = useState('');
   const [cart, setCart] = useState<{ product: Product; quantity: number }[]>([]);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
 
-  const filtered = products.filter((p: any) =>
-    p.id.toUpperCase().includes(query.toUpperCase()) ||
-    p.name.toUpperCase().includes(query.toUpperCase())
-  ).slice(0, 5);
+  const filtered = query.trim() ? products.filter((p: any) =>
+    matchProduct(p, query)
+  ).slice(0, 5) : [];
 
   const addToCart = (product: Product) => {
     setCart(prev => {
@@ -367,6 +406,7 @@ function SalesView({ searchInputRef, onSale, products, onProductNotFound }: any)
       return [...prev, { product, quantity: 1 }];
     });
     setQuery('');
+    setSelectedIndex(-1);
   };
 
   const removeFromCart = (productId: string) => {
@@ -403,12 +443,46 @@ function SalesView({ searchInputRef, onSale, products, onProductNotFound }: any)
     const cleanQuery = query.trim().toUpperCase();
     if (!cleanQuery) return;
 
+    // 1. Exact ID/barcode match
     const exactMatch = products.find((p: any) => p.id === cleanQuery);
     if (exactMatch) {
       addToCart(exactMatch);
       setQuery('');
-    } else {
-      onProductNotFound(cleanQuery);
+      setSelectedIndex(-1);
+      return;
+    }
+
+    // 2. Select highlighted item from keyboard navigation
+    if (selectedIndex >= 0 && selectedIndex < filtered.length) {
+      addToCart(filtered[selectedIndex]);
+      setQuery('');
+      setSelectedIndex(-1);
+      return;
+    }
+
+    // 3. Fallback: select first match in suggestions
+    if (filtered.length > 0) {
+      addToCart(filtered[0]);
+      setQuery('');
+      setSelectedIndex(-1);
+      return;
+    }
+
+    // 4. No matches: trigger creation modal
+    onProductNotFound(cleanQuery);
+    setSelectedIndex(-1);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIndex(prev => (prev < filtered.length - 1 ? prev + 1 : prev));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIndex(prev => (prev > 0 ? prev - 1 : -1));
+    } else if (e.key === 'Escape') {
+      setQuery('');
+      setSelectedIndex(-1);
     }
   };
 
@@ -420,6 +494,19 @@ function SalesView({ searchInputRef, onSale, products, onProductNotFound }: any)
       setIsPaymentModalOpen(false);
     }
   };
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'F10') {
+        e.preventDefault();
+        if (cart.length > 0) {
+          setIsPaymentModalOpen(true);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [cart]);
 
   return (
     <div className="flex h-full">
@@ -436,7 +523,11 @@ function SalesView({ searchInputRef, onSale, products, onProductNotFound }: any)
             ref={searchInputRef}
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value.toUpperCase())}
+            onChange={(e) => {
+              setQuery(e.target.value.toUpperCase());
+              setSelectedIndex(-1);
+            }}
+            onKeyDown={handleKeyDown}
             placeholder="ESCANEAR O BUSCAR PRODUCTO..."
             className="w-full bg-white border border-[var(--line)] py-4 pl-12 pr-4 text-lg font-medium rounded-xl shadow-sm focus:outline-none focus:ring-2 ring-[var(--primary)]/20 transition-all"
             autoFocus
@@ -444,11 +535,15 @@ function SalesView({ searchInputRef, onSale, products, onProductNotFound }: any)
 
           {query && filtered.length > 0 && (
             <div className="absolute top-full left-0 w-full bg-white border border-[var(--line)] border-t-0 shadow-2xl z-10">
-              {filtered.map((p: any) => (
+              {filtered.map((p: any, index: number) => (
                 <button
                   key={p.id}
+                  type="button"
                   onClick={() => addToCart(p)}
-                  className="w-full flex items-center justify-between p-4 hover:bg-[var(--ink)] hover:text-[var(--bg)] transition-colors group border-b border-[var(--line)] last:border-0"
+                  className={cn(
+                    "w-full flex items-center justify-between p-4 hover:bg-gray-100 transition-colors group border-b border-[var(--line)] last:border-0",
+                    index === selectedIndex ? "bg-blue-50 text-[var(--primary)] border-l-4 border-l-[var(--primary)]" : "bg-white text-[var(--ink)]"
+                  )}
                 >
                   <div className="text-left">
                     <div className="font-bold uppercase text-sm">{p.name}</div>
@@ -555,6 +650,7 @@ function PaymentModal({ total, onClose, onConfirm }: any) {
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
   const [newCustomer, setNewCustomer] = useState({ rut: '', first_name: '', last_name: '' });
+  const [selectedCustomerIndex, setSelectedCustomerIndex] = useState(-1);
 
   useEffect(() => {
     if (method === 'cuenta_por_cobrar') {
@@ -585,9 +681,33 @@ function PaymentModal({ total, onClose, onConfirm }: any) {
     }
   };
 
-  const filteredCustomers = customers.filter(c => 
-    `${c.first_name} ${c.last_name} ${c.rut}`.toLowerCase().includes(searchCustomer.toLowerCase())
-  );
+  const filteredCustomers = searchCustomer.trim() ? customers.filter(c => 
+    matchCustomer(c, searchCustomer)
+  ) : [];
+
+  const handleCustomerKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedCustomerIndex(prev => (prev < filteredCustomers.length - 1 ? prev + 1 : prev));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedCustomerIndex(prev => (prev > 0 ? prev - 1 : -1));
+    } else if (e.key === 'Escape') {
+      setSearchCustomer('');
+      setSelectedCustomerIndex(-1);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (selectedCustomerIndex >= 0 && selectedCustomerIndex < filteredCustomers.length) {
+        setSelectedCustomer(filteredCustomers[selectedCustomerIndex]);
+        setSearchCustomer('');
+        setSelectedCustomerIndex(-1);
+      } else if (filteredCustomers.length > 0) {
+        setSelectedCustomer(filteredCustomers[0]);
+        setSearchCustomer('');
+        setSelectedCustomerIndex(-1);
+      }
+    }
+  };
 
   const change = method === 'cash' ? (parseFloat(received) || 0) - total : 0;
 
@@ -728,15 +848,30 @@ function PaymentModal({ total, onClose, onConfirm }: any) {
                         type="text"
                         autoFocus
                         value={searchCustomer}
-                        onChange={e => setSearchCustomer(e.target.value)}
+                        onChange={e => {
+                          setSearchCustomer(e.target.value);
+                          setSelectedCustomerIndex(-1);
+                        }}
+                        onKeyDown={handleCustomerKeyDown}
                         placeholder="Nombre, Apellido o RUT..."
                         className="w-full bg-white border border-[var(--line)] p-3 text-sm rounded focus:outline-none focus:ring-2 ring-blue-100 mb-2"
                       />
                       {searchCustomer && (
                         <div className="max-h-40 overflow-y-auto border border-[var(--line)] rounded-lg bg-white shadow-sm mb-4">
                           {filteredCustomers.length > 0 ? (
-                            filteredCustomers.map(c => (
-                              <button key={c.id} onClick={() => setSelectedCustomer(c)} className="w-full text-left p-3 hover:bg-gray-50 border-b border-[var(--line)] text-sm">
+                            filteredCustomers.map((c, index) => (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedCustomer(c);
+                                  setSearchCustomer('');
+                                }}
+                                className={cn(
+                                  "w-full text-left p-3 hover:bg-gray-50 border-b border-[var(--line)] text-sm transition-colors",
+                                  index === selectedCustomerIndex ? "bg-blue-50 text-[var(--primary)] border-l-4 border-l-[var(--primary)]" : "bg-white text-gray-700"
+                                )}
+                              >
                                 <div className="font-bold">{c.first_name} {c.last_name}</div>
                                 <div className="text-xs text-gray-500">{c.rut}</div>
                               </button>
@@ -800,10 +935,10 @@ function InventoryView({ products, onRefresh, onAddProduct, lowStockThreshold, s
   const [editingProduct, setEditingProduct] = useState<any>(null);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
-  const filtered = products.filter((p: any) =>
-    p.name.toLowerCase().includes(search.toLowerCase()) ||
-    p.id.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = products.filter((p: any) => {
+    if (!search.trim()) return true;
+    return matchProduct(p, search);
+  });
 
   const exactMatch = products.find((p: any) => p.id === search);
 
@@ -820,6 +955,9 @@ function InventoryView({ products, onRefresh, onAddProduct, lowStockThreshold, s
       const productBatches = data.batches.filter((b: any) => b.product_id === p.id);
       const totalStock = productBatches.reduce((sum: number, b: any) => sum + b.quantity, 0);
       const oldestBatch = productBatches[0];
+      const productSales = data.sales ? data.sales.filter((s: any) => s.product_id === p.id) : [];
+      const rotation = productSales.reduce((sum: number, s: any) => sum + s.quantity, 0);
+      const coverage = rotation > 0 ? Math.round(totalStock / (rotation / 30)) : '∞';
 
       return {
         'ID_BARCODE': p.id,
@@ -827,7 +965,9 @@ function InventoryView({ products, onRefresh, onAddProduct, lowStockThreshold, s
         'CATEGORIA': p.type,
         'PRECIO_VENTA': p.sale_price,
         'STOCK_ACTUAL': totalStock,
-        'COSTO_REF': oldestBatch ? oldestBatch.cost : 0
+        'COSTO_REF': oldestBatch ? oldestBatch.cost : 0,
+        'ROTACION_30D': rotation,
+        'COBERTURA_DIAS': coverage
       };
     });
 
@@ -921,12 +1061,14 @@ function InventoryView({ products, onRefresh, onAddProduct, lowStockThreshold, s
       )}
 
       <div className="border border-[var(--line)] bg-white rounded-2xl overflow-hidden shadow-xl">
-        <div className="grid grid-cols-[100px_minmax(200px,3fr)_1.2fr_100px_120px_120px_1.5fr_80px] col-header bg-gray-50/50">
+        <div className="grid grid-cols-[90px_minmax(150px,3fr)_1fr_70px_80px_80px_90px_90px_1.2fr_60px] col-header bg-gray-50/50">
           <div className="truncate">ID</div>
           <div className="truncate">PRODUCTO</div>
           <div className="truncate">CATEGORÍA</div>
           <div className="text-center truncate">STOCK</div>
-          <div className="text-right flex items-center justify-end gap-2 truncate">
+          <div className="text-center truncate" title="Ventas en los últimos 30 días">ROTACIÓN</div>
+          <div className="text-center truncate" title="Días estimados que durará el stock">COBERTURA</div>
+          <div className="text-right flex items-center justify-end gap-1 truncate">
             COSTO
             <button onClick={() => setShowCosts(!showCosts)} className="text-gray-400 hover:text-[var(--primary)] flex-shrink-0">
               {showCosts ? <EyeOff size={12} /> : <Eye size={12} />}
@@ -941,7 +1083,7 @@ function InventoryView({ products, onRefresh, onAddProduct, lowStockThreshold, s
             const isLowStock = p.total_stock < lowStockThreshold;
             return (
               <div key={p.id} className={cn(
-                "grid grid-cols-[100px_minmax(200px,3fr)_1.2fr_100px_120px_120px_1.5fr_80px] data-row text-sm items-center hover:bg-gray-50/50 transition-colors",
+                "grid grid-cols-[90px_minmax(150px,3fr)_1fr_70px_80px_80px_90px_90px_1.2fr_60px] data-row text-sm items-center hover:bg-gray-50/50 transition-colors",
                 isLowStock && p.active === 1 && "bg-red-50/30",
                 exactMatch?.id === p.id && "bg-green-50"
               )}>
@@ -955,6 +1097,12 @@ function InventoryView({ products, onRefresh, onAddProduct, lowStockThreshold, s
                   isLowStock && p.active === 1 ? "text-red-600" : "text-gray-700"
                 )}>
                   {p.total_stock}
+                </div>
+                <div className="text-center font-semibold text-xs text-gray-600">
+                  {p.sales_30_days || 0} U
+                </div>
+                <div className="text-center font-semibold text-xs text-gray-600">
+                  {p.sales_30_days > 0 ? `${Math.round(p.total_stock / (p.sales_30_days / 30))} d` : '∞'}
                 </div>
                 <div className="text-right font-mono text-gray-600">
                   {showCosts ? `$${(p.cost || 0).toLocaleString()}` : '••••••'}
@@ -2381,14 +2529,13 @@ function EntitiesView() {
 
   const filteredEntities = entities.filter(ent => {
     // Type filter
-    if (activeTab !== 'all' && (ent.type || 'cliente') !== activeTab) return false;
+    const entType = ent.type || 'cliente';
+    if (activeTab === 'cliente' && entType !== 'cliente' && entType !== 'ambos') return false;
+    if (activeTab === 'proveedor' && entType !== 'proveedor' && entType !== 'ambos') return false;
     
     // Search filter
-    const term = searchTerm.toLowerCase();
-    const name = `${ent.first_name} ${ent.last_name}`.toLowerCase();
-    const rut = (ent.rut || '').toLowerCase();
-    const contact = (ent.contact || '').toLowerCase();
-    return name.includes(term) || rut.includes(term) || contact.includes(term);
+    if (!searchTerm.trim()) return true;
+    return matchCustomer(ent, searchTerm);
   });
 
   return (
@@ -2469,15 +2616,17 @@ function EntitiesView() {
             <tbody className="divide-y divide-gray-100 text-xs">
               {filteredEntities.map(ent => (
                 <tr key={ent.id} className="hover:bg-gray-50/50 transition-colors">
-                  <td className="px-6 py-4">
-                    <span className={cn(
-                      "px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider",
-                      (ent.type || 'cliente') === 'cliente' 
-                        ? "bg-green-100 text-green-800" 
-                        : "bg-purple-100 text-purple-800"
-                    )}>
-                      {ent.type || 'cliente'}
-                    </span>
+                  <td className="px-6 py-4 space-x-1">
+                    {(ent.type === 'cliente' || ent.type === 'ambos') && (
+                      <span className="px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider bg-green-100 text-green-800">
+                        Cliente
+                      </span>
+                    )}
+                    {(ent.type === 'proveedor' || ent.type === 'ambos') && (
+                      <span className="px-2.5 py-1 rounded-full text-[9px] font-bold uppercase tracking-wider bg-purple-100 text-purple-800">
+                        Proveedor
+                      </span>
+                    )}
                   </td>
                   <td className="px-6 py-4 font-bold text-[var(--ink)]">
                     {ent.first_name} {ent.last_name}
@@ -2541,33 +2690,51 @@ function EntitiesView() {
             <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1 text-left">
               <div>
                 <label className="text-[10px] font-black uppercase text-gray-400 block mb-1.5">Tipo de Entidad *</label>
-                <div className="flex bg-gray-100 p-1 rounded-xl border border-[var(--line)]">
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, type: 'cliente' })}
-                    className={cn(
-                      "flex-1 py-2 text-xs font-bold rounded-lg transition-all",
-                      formData.type === 'cliente' ? "bg-white text-[var(--primary)] shadow-sm" : "text-gray-500"
-                    )}
-                  >
+                <div className="flex gap-6 py-2 px-3 bg-gray-50 border border-[var(--line)] rounded-xl">
+                  <label className="flex items-center gap-2 text-xs font-bold uppercase cursor-pointer select-none text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={formData.type === 'cliente' || formData.type === 'ambos'}
+                      onChange={e => {
+                        const isProvider = formData.type === 'proveedor' || formData.type === 'ambos';
+                        const isChecked = e.target.checked;
+                        if (isChecked) {
+                          setFormData({ ...formData, type: isProvider ? 'ambos' : 'cliente' });
+                        } else {
+                          if (isProvider) {
+                            setFormData({ ...formData, type: 'proveedor' });
+                          }
+                        }
+                      }}
+                      className="w-4 h-4 rounded text-[var(--primary)] focus:ring-[var(--primary)]"
+                    />
                     Cliente
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFormData({ ...formData, type: 'proveedor' })}
-                    className={cn(
-                      "flex-1 py-2 text-xs font-bold rounded-lg transition-all",
-                      formData.type === 'proveedor' ? "bg-white text-purple-600 shadow-sm" : "text-gray-500"
-                    )}
-                  >
+                  </label>
+                  <label className="flex items-center gap-2 text-xs font-bold uppercase cursor-pointer select-none text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={formData.type === 'proveedor' || formData.type === 'ambos'}
+                      onChange={e => {
+                        const isCustomer = formData.type === 'cliente' || formData.type === 'ambos';
+                        const isChecked = e.target.checked;
+                        if (isChecked) {
+                          setFormData({ ...formData, type: isCustomer ? 'ambos' : 'proveedor' });
+                        } else {
+                          if (isCustomer) {
+                            setFormData({ ...formData, type: 'cliente' });
+                          }
+                        }
+                      }}
+                      className="w-4 h-4 rounded text-purple-600 focus:ring-purple-500"
+                    />
                     Proveedor
-                  </button>
+                  </label>
                 </div>
               </div>
 
               <div>
                 <label className="text-[10px] font-black uppercase text-gray-400 block mb-1.5">
-                  Razón Social / Nombre {formData.type === 'cliente' ? 'Cliente' : 'Proveedor'} *
+                  Razón Social / Nombre {formData.type === 'ambos' ? 'Cliente/Proveedor' : (formData.type === 'cliente' ? 'Cliente' : 'Proveedor')} *
                 </label>
                 <input
                   type="text"
@@ -2844,6 +3011,7 @@ function QuotesView({ products }: { products: Product[] }) {
   const [customers, setCustomers] = useState<any[]>([]);
   const [customerSearch, setCustomerSearch] = useState('');
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const [selectedCustomerIndex, setSelectedCustomerIndex] = useState(-1);
 
   // Editor states
   const [clientName, setClientName] = useState('');
@@ -2858,6 +3026,7 @@ function QuotesView({ products }: { products: Product[] }) {
   // POS Cart
   const [cart, setCart] = useState<any[]>([]);
   const [productQuery, setProductQuery] = useState('');
+  const [selectedProductIndex, setSelectedProductIndex] = useState(-1);
 
   const fetchQuotes = async () => {
     try {
@@ -2899,6 +3068,8 @@ function QuotesView({ products }: { products: Product[] }) {
     setCart([]);
     setProductQuery('');
     setCustomerSearch('');
+    setSelectedCustomerIndex(-1);
+    setSelectedProductIndex(-1);
     setScreen('editor');
   };
 
@@ -2937,6 +3108,8 @@ function QuotesView({ products }: { products: Product[] }) {
         setCart(mappedCart);
         setProductQuery('');
         setCustomerSearch('');
+        setSelectedCustomerIndex(-1);
+        setSelectedProductIndex(-1);
         setScreen('editor');
       } else {
         toast.error("Error al cargar detalles de cotización");
@@ -2962,11 +3135,9 @@ function QuotesView({ products }: { products: Product[] }) {
   };
 
   // Autocomplete client selection
-  const filteredCustomers = customers.filter(c => {
-    const term = customerSearch.toLowerCase();
-    const fullName = `${c.first_name} ${c.last_name}`.toLowerCase();
-    return fullName.includes(term) || (c.rut && c.rut.toLowerCase().includes(term));
-  });
+  const filteredCustomers = customerSearch.trim() ? customers.filter(c =>
+    matchCustomer(c, customerSearch)
+  ) : [];
 
   const selectCustomer = (c: any) => {
     setClientName(`${c.first_name} ${c.last_name}`.trim().toUpperCase());
@@ -2978,11 +3149,31 @@ function QuotesView({ products }: { products: Product[] }) {
     setShowCustomerDropdown(false);
   };
 
+  const handleCustomerKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedCustomerIndex(prev => (prev < filteredCustomers.length - 1 ? prev + 1 : prev));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedCustomerIndex(prev => (prev > 0 ? prev - 1 : -1));
+    } else if (e.key === 'Escape') {
+      setShowCustomerDropdown(false);
+      setSelectedCustomerIndex(-1);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (selectedCustomerIndex >= 0 && selectedCustomerIndex < filteredCustomers.length) {
+        selectCustomer(filteredCustomers[selectedCustomerIndex]);
+      } else if (filteredCustomers.length > 0) {
+        selectCustomer(filteredCustomers[0]);
+      }
+      setSelectedCustomerIndex(-1);
+    }
+  };
+
   // Cart operations
-  const filteredProducts = products.filter(p =>
-    p.id.toUpperCase().includes(productQuery.toUpperCase()) ||
-    p.name.toUpperCase().includes(productQuery.toUpperCase())
-  ).slice(0, 5);
+  const filteredProducts = productQuery.trim() ? products.filter(p =>
+    matchProduct(p, productQuery)
+  ).slice(0, 5) : [];
 
   const addToCart = (product: Product) => {
     setCart(prev => {
@@ -2997,6 +3188,28 @@ function QuotesView({ products }: { products: Product[] }) {
       return [...prev, { product, quantity: 1, unit: 'UNID', sale_price: product.sale_price }];
     });
     setProductQuery('');
+    setSelectedProductIndex(-1);
+  };
+
+  const handleProductKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedProductIndex(prev => (prev < filteredProducts.length - 1 ? prev + 1 : prev));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedProductIndex(prev => (prev > 0 ? prev - 1 : -1));
+    } else if (e.key === 'Escape') {
+      setProductQuery('');
+      setSelectedProductIndex(-1);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (selectedProductIndex >= 0 && selectedProductIndex < filteredProducts.length) {
+        addToCart(filteredProducts[selectedProductIndex]);
+      } else if (filteredProducts.length > 0) {
+        addToCart(filteredProducts[0]);
+      }
+      setSelectedProductIndex(-1);
+    }
   };
 
   const removeFromCart = (productId: string) => {
@@ -3096,12 +3309,12 @@ function QuotesView({ products }: { products: Product[] }) {
 
       const configRes = await fetch('/api/company-settings');
       let issuer = {
-        company_name: 'Comercializadora Carla Patricia Espinosa Zárate EIRL',
-        company_rut: '76.794.328-8',
-        company_address: 'POLHUIN S/N, PELLUHUE',
-        company_phone: '977685797',
-        company_email: 'haciendasanjuan@gmail.com',
-        company_bank_details: 'Cuenta Corriente del Banco del Estado, Nº 44700072301 a nombre de COMERCIALIZADORA CARLA PATRICIA ESPINOSA ZARATE E.I.R.L.; Email:haciendasanjuan@gmail.com; RUT 76.794.328-8',
+        company_name: '',
+        company_rut: '',
+        company_address: '',
+        company_phone: '',
+        company_email: '',
+        company_bank_details: '',
         company_logo: ''
       };
       if (configRes.ok) {
@@ -3497,7 +3710,9 @@ function QuotesView({ products }: { products: Product[] }) {
                   onChange={e => {
                     setCustomerSearch(e.target.value);
                     setShowCustomerDropdown(true);
+                    setSelectedCustomerIndex(-1);
                   }}
+                  onKeyDown={handleCustomerKeyDown}
                   onFocus={() => setShowCustomerDropdown(true)}
                   className="w-full bg-gray-50 border border-[var(--line)] py-2 pl-9 pr-4 text-xs rounded-xl focus:bg-white focus:outline-none focus:ring-2 ring-[var(--primary)]/20"
                 />
@@ -3505,12 +3720,15 @@ function QuotesView({ products }: { products: Product[] }) {
 
               {showCustomerDropdown && customerSearch && (
                 <div className="absolute top-full left-0 w-full bg-white border border-[var(--line)] rounded-xl shadow-2xl z-20 max-h-40 overflow-y-auto mt-1">
-                  {filteredCustomers.map(c => (
+                  {filteredCustomers.map((c, index) => (
                     <button
                       key={c.id}
                       type="button"
                       onClick={() => selectCustomer(c)}
-                      className="w-full text-left p-2.5 text-xs hover:bg-gray-100 border-b last:border-0 border-gray-100 flex justify-between uppercase"
+                      className={cn(
+                        "w-full text-left p-2.5 text-xs hover:bg-gray-100 border-b last:border-0 border-gray-100 flex justify-between uppercase transition-colors",
+                        index === selectedCustomerIndex ? "bg-blue-50 text-[var(--primary)] border-l-4 border-l-[var(--primary)]" : "bg-white text-gray-700"
+                      )}
                     >
                       <span className="font-bold">{c.first_name} {c.last_name}</span>
                       <span className="text-gray-400 font-mono">{c.rut || 'SIN RUT'}</span>
@@ -3636,18 +3854,26 @@ function QuotesView({ products }: { products: Product[] }) {
               <input
                 type="text"
                 value={productQuery}
-                onChange={e => setProductQuery(e.target.value)}
+                onChange={e => {
+                  setProductQuery(e.target.value);
+                  setSelectedProductIndex(-1);
+                }}
+                onKeyDown={handleProductKeyDown}
                 placeholder="BUSCAR O ESCANEAR PRODUCTO..."
                 className="w-full bg-white border border-[var(--line)] py-3 pl-10 pr-4 text-xs font-semibold rounded-xl shadow-sm focus:outline-none focus:ring-2 ring-[var(--primary)]/20 transition-all uppercase"
               />
               
               {productQuery && filteredProducts.length > 0 && (
                 <div className="absolute top-full left-0 w-full bg-white border border-[var(--line)] border-t-0 shadow-2xl z-20 rounded-b-xl overflow-hidden">
-                  {filteredProducts.map(p => (
+                  {filteredProducts.map((p, index) => (
                     <button
                       key={p.id}
+                      type="button"
                       onClick={() => addToCart(p)}
-                      className="w-full flex items-center justify-between p-3.5 hover:bg-[var(--ink)] hover:text-white transition-colors text-left border-b border-gray-100 last:border-0"
+                      className={cn(
+                        "w-full flex items-center justify-between p-3.5 hover:bg-gray-100 transition-colors text-left border-b border-gray-100 last:border-0",
+                        index === selectedProductIndex ? "bg-blue-50 text-[var(--primary)] border-l-4 border-l-[var(--primary)]" : "bg-white text-gray-700"
+                      )}
                     >
                       <div>
                         <div className="font-bold uppercase text-xs">{p.name}</div>

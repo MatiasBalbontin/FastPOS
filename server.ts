@@ -147,12 +147,12 @@ db.exec(`
 const checkSettings = db.prepare("SELECT COUNT(*) as count FROM company_settings").get() as { count: number };
 if (checkSettings.count === 0) {
   const insertSetting = db.prepare("INSERT INTO company_settings (key, value) VALUES (?, ?)");
-  insertSetting.run('company_name', 'Comercializadora Carla Patricia Espinosa Zárate EIRL');
-  insertSetting.run('company_rut', '76.794.328-8');
-  insertSetting.run('company_address', 'POLHUIN S/N, PELLUHUE');
-  insertSetting.run('company_phone', '977685797');
-  insertSetting.run('company_email', 'haciendasanjuan@gmail.com');
-  insertSetting.run('company_bank_details', 'Cuenta Corriente del Banco del Estado, Nº 44700072301 a nombre de COMERCIALIZADORA CARLA PATRICIA ESPINOSA ZARATE E.I.R.L.; Email:haciendasanjuan@gmail.com; RUT 76.794.328-8');
+  insertSetting.run('company_name', '');
+  insertSetting.run('company_rut', '');
+  insertSetting.run('company_address', '');
+  insertSetting.run('company_phone', '');
+  insertSetting.run('company_email', '');
+  insertSetting.run('company_bank_details', '');
 }
 
 async function startServer() {
@@ -172,7 +172,8 @@ async function startServer() {
         p.*, 
         COALESCE(SUM(b.quantity), 0) as total_stock,
         EXISTS(SELECT 1 FROM batches b2 WHERE b2.product_id = p.id AND b2.cost = 0) as has_zero_cost,
-        (SELECT cost FROM batches b3 WHERE b3.product_id = p.id AND b3.quantity > 0 ORDER BY b3.created_at ASC LIMIT 1) as cost
+        (SELECT cost FROM batches b3 WHERE b3.product_id = p.id AND b3.quantity > 0 ORDER BY b3.created_at ASC LIMIT 1) as cost,
+        COALESCE((SELECT SUM(s.quantity) FROM sales s WHERE s.product_id = p.id AND s.status = 'completed' AND datetime(s.created_at) >= datetime('now', '-30 days')), 0) as sales_30_days
       FROM products p
       LEFT JOIN batches b ON p.id = b.product_id
       ${whereClause}
@@ -357,7 +358,8 @@ async function startServer() {
   app.get('/api/export', (req, res) => {
     const products = db.prepare('SELECT * FROM products').all();
     const batches = db.prepare('SELECT * FROM batches').all();
-    res.json({ products, batches });
+    const sales = db.prepare("SELECT * FROM sales WHERE status = 'completed' AND datetime(created_at) >= datetime('now', '-30 days')").all();
+    res.json({ products, batches, sales });
   });
 
   // Register a Sale (FIFO Logic)
@@ -910,7 +912,7 @@ async function startServer() {
       let query = 'SELECT * FROM customers';
       const params: any[] = [];
       if (type) {
-        query += ' WHERE type = ?';
+        query += " WHERE type = ? OR type = 'ambos'";
         params.push(type);
       }
       query += ' ORDER BY first_name ASC';
