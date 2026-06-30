@@ -45,7 +45,7 @@ export const EntitySchema = z.object({
   rut: z.string().refine(val => !val || validateRut(val), { message: 'RUT inválido' }).optional().nullable(),
   first_name: z.string().min(1),
   last_name: z.string().optional(),
-  type: z.enum(['cliente', 'proveedor', 'ambos']),
+  type: z.enum(['cliente', 'proveedor', 'ambos']).optional().default('cliente'),
   address: z.string().optional(),
   contact: z.string().optional(),
   phone: z.string().optional(),

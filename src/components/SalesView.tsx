@@ -92,11 +92,11 @@ function PaymentModal({ total, onClose, onConfirm }: PaymentModalProps) {
     const res = await fetch('/api/customers', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newCustomer)
+      body: JSON.stringify({ ...newCustomer, type: 'cliente' })
     });
     if (res.ok) {
       const data = await res.json();
-      const newC = { ...newCustomer, id: data.id };
+      const newC = { ...newCustomer, id: data.id, type: 'cliente' };
       setCustomers([...customers, newC]);
       setSelectedCustomer(newC);
       setIsCreatingCustomer(false);

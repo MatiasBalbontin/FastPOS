@@ -110,11 +110,12 @@ router.post('/bulk', validateBody(SaleBulkSchema), (req, res, next) => {
         }
 
         const totalCostNum = totalCost.toNumber();
+        const parsedCustomerId = customer_id ? parseInt(String(customer_id), 10) : null;
 
         db.prepare(`
           INSERT INTO sales (product_id, quantity, sale_price, total_cost, ticket_id, payment_method, status, customer_id)
           VALUES (?, ?, ?, ?, ?, ?, 'completed', ?)
-        `).run(product_id, quantity, product.sale_price, totalCostNum, ticket_id, method, customer_id || null);
+        `).run(product_id, quantity, product.sale_price, totalCostNum, ticket_id, method, parsedCustomerId);
 
         results.push({ product_id, totalCost: totalCostNum, salePrice: product.sale_price });
       }
