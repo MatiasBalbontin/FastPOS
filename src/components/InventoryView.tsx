@@ -65,7 +65,7 @@ function EditProductModal({ product, onClose, onSuccess }: EditProductModalProps
         ...formData,
         sale_price: parseFloat(formData.sale_price),
         cost: parseFloat(formData.cost),
-        new_stock: formData.total_stock
+        new_stock: parseInt(formData.total_stock, 10)
       })
     });
 

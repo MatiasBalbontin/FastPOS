@@ -21,9 +21,9 @@ export const ProductSchema = z.object({
   id: z.string().optional(),
   name: z.string().min(1),
   type: z.string().min(1), // category
-  sale_price: z.number().gt(0),
-  initial_stock: z.union([z.number(), z.string()]).optional(),
-  cost: z.union([z.number(), z.string()]).optional()
+  sale_price: z.coerce.number().gt(0),
+  initial_stock: z.coerce.number().int().nonnegative().optional(),
+  cost: z.coerce.number().nonnegative().optional()
 });
 
 export const SaleSchema = z.object({
@@ -61,9 +61,9 @@ export const ExpenseSchema = z.object({
 export const ProductUpdateSchema = z.object({
   name: z.string().optional(),
   type: z.string().optional(),
-  sale_price: z.number().gt(0).optional(),
-  cost: z.number().nonnegative().optional(),
-  new_stock: z.number().int().nonnegative().optional()
+  sale_price: z.coerce.number().gt(0).optional(),
+  cost: z.coerce.number().nonnegative().optional(),
+  new_stock: z.coerce.number().int().nonnegative().optional()
 });
 
 export const validateBody = (schema: z.ZodSchema) => {
