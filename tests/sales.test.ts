@@ -76,17 +76,28 @@ describe('Sales & FIFO Logic', () => {
     expect(finalStock).toBe(5);
   });
 
-  it('should handle negative stock (pre-sales) correctly', () => {
+  it('should reject sale if stock is insufficient', () => {
     db.prepare('INSERT INTO products (id, name, type, sale_price) VALUES (?, ?, ?, ?)').run('P2', 'Test Product 2', 'Test', 100);
-    // No batches yet
+    // No batches yet, so stock is 0
 
     const quantity = 5;
     const product_id = 'P2';
 
-    // Simulate negative batch creation
-    db.prepare('INSERT INTO batches (product_id, quantity, initial_quantity, cost) VALUES (?, ?, ?, ?)').run(product_id, -quantity, -quantity, 0);
+    // Get current stock
+    const stockRow = db.prepare('SELECT COALESCE(SUM(quantity), 0) as total_stock FROM batches WHERE product_id = ? AND quantity > 0').get(product_id);
+    const stockActual = stockRow ? stockRow.total_stock : 0;
 
-    const stock = db.prepare('SELECT SUM(quantity) as total FROM batches WHERE product_id = ?').get('P2').total;
-    expect(stock).toBe(-5);
+    let errorThrown = false;
+    if (quantity > stockActual) {
+      errorThrown = true;
+    } else {
+      // Simulate FIFO sale deduction
+      db.prepare('INSERT INTO batches (product_id, quantity, initial_quantity, cost) VALUES (?, ?, ?, ?)').run(product_id, -quantity, -quantity, 0);
+    }
+
+    expect(errorThrown).toBe(true);
+
+    const stock = db.prepare('SELECT COALESCE(SUM(quantity), 0) as total FROM batches WHERE product_id = ?').get('P2').total;
+    expect(stock).toBe(0);
   });
 });
