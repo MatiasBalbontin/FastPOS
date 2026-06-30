@@ -1,17 +1,22 @@
 import React, { useState } from 'react';
-import { Lock, ShoppingCart } from 'lucide-react';
+import { Lock, User, ShoppingCart } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface LoginViewProps {
-  onLoginSuccess: () => void;
+  onLoginSuccess: (permissions: string[]) => void;
 }
 
 export function LoginView({ onLoginSuccess }: LoginViewProps) {
+  const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!username.trim()) {
+      toast.error('Por favor, ingresa el usuario.');
+      return;
+    }
     if (!password) {
       toast.error('Por favor, ingresa la contraseña.');
       return;
@@ -22,14 +27,14 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password })
+        body: JSON.stringify({ username, password })
       });
       const data = await res.json();
       if (res.ok) {
         toast.success('Sesión iniciada con éxito');
-        onLoginSuccess();
+        onLoginSuccess(data.permissions || []);
       } else {
-        toast.error(data.error || 'Contraseña incorrecta');
+        toast.error(data.error || 'Usuario o contraseña incorrectos');
       }
     } catch {
       toast.error('Error de conexión con el servidor');
@@ -52,10 +57,25 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
         </div>
 
         <h2 className="text-3xl font-extrabold text-white tracking-tight">FastPOS</h2>
-        <p className="text-sm text-slate-400 mt-2 mb-8">Ingresa la contraseña administrativa para continuar</p>
+        <p className="text-sm text-slate-400 mt-2 mb-8">Ingresa tus credenciales para continuar</p>
 
-        <form onSubmit={handleSubmit} className="space-y-6 text-left">
-          <div className="relative">
+        <form onSubmit={handleSubmit} className="space-y-5 text-left">
+          <div>
+            <label className="text-[10px] font-black uppercase text-slate-400 block mb-2 tracking-widest">Usuario</label>
+            <div className="relative">
+              <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+              <input
+                type="text"
+                placeholder="admin"
+                value={username}
+                onChange={e => setUsername(e.target.value)}
+                disabled={isLoading}
+                className="w-full bg-white/5 border border-white/10 py-3 pl-12 pr-4 text-sm text-white rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all font-semibold"
+              />
+            </div>
+          </div>
+
+          <div>
             <label className="text-[10px] font-black uppercase text-slate-400 block mb-2 tracking-widest">Contraseña de Acceso</label>
             <div className="relative">
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />

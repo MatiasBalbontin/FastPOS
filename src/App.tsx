@@ -56,6 +56,7 @@ const SidebarItem = ({ icon: Icon, label, active, onClick }: SidebarItemProps) =
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [userPermissions, setUserPermissions] = useState<string[]>([]);
   const [view, setView] = useState<'sales' | 'inventory' | 'analytics' | 'history' | 'expenses' | 'receivables' | 'fixed_costs' | 'quotes' | 'configuration' | 'entities'>('sales');
   const [products, setProducts] = useState<Product[]>([]);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
@@ -69,15 +70,27 @@ export default function App() {
   const [showArchived, setShowArchived] = useState(false);
 
   const fetchProducts = async (includeInactive = false) => {
-    const res = await fetch(`/api/products?includeInactive=${includeInactive}`);
-    const data = await res.json();
-    setProducts(data);
+    if (!isAuthenticated) return;
+    try {
+      const res = await fetch(`/api/products?includeInactive=${includeInactive}`);
+      if (!res.ok) throw new Error('Failed to fetch products');
+      const data = await res.json();
+      setProducts(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const fetchAnalytics = async () => {
-    const res = await fetch(`/api/analytics?startDate=${startDate}T00:00:00&endDate=${endDate}T23:59:59`);
-    const data = await res.json();
-    setAnalytics(data);
+    if (!isAuthenticated) return;
+    try {
+      const res = await fetch(`/api/analytics?startDate=${startDate}T00:00:00&endDate=${endDate}T23:59:59`);
+      if (!res.ok) throw new Error('Failed to fetch analytics');
+      const data = await res.json();
+      setAnalytics(data);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const checkAuth = async () => {
@@ -86,11 +99,14 @@ export default function App() {
       const data = await res.json();
       if (data && data.authenticated) {
         setIsAuthenticated(true);
+        setUserPermissions(data.permissions || []);
       } else {
         setIsAuthenticated(false);
+        setUserPermissions([]);
       }
     } catch {
       setIsAuthenticated(false);
+      setUserPermissions([]);
     }
   };
 
@@ -99,6 +115,7 @@ export default function App() {
       const res = await fetch('/api/auth/logout', { method: 'POST' });
       if (res.ok) {
         setIsAuthenticated(false);
+        setUserPermissions([]);
         toast.success('Sesión cerrada correctamente');
       } else {
         toast.error('Error al cerrar sesión');
@@ -120,6 +137,7 @@ export default function App() {
         const urlStr = typeof args[0] === 'string' ? args[0] : (args[0] as Request).url;
         if (!urlStr.includes('/api/auth/login') && !urlStr.includes('/api/auth/session')) {
           setIsAuthenticated(false);
+          setUserPermissions([]);
         }
       }
       return response;
@@ -130,24 +148,39 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    fetchProducts(showArchived);
-  }, [showArchived]);
+    if (isAuthenticated) {
+      fetchProducts(showArchived);
+    }
+  }, [showArchived, isAuthenticated]);
 
   useEffect(() => {
-    fetchAnalytics();
-  }, [startDate, endDate]);
-
-  useEffect(() => {
-    if (view === 'analytics') {
+    if (isAuthenticated) {
       fetchAnalytics();
     }
-  }, [view]);
+  }, [startDate, endDate, isAuthenticated]);
 
   useEffect(() => {
-    if (view === 'sales' && !isExpressModalOpen) {
+    if (view === 'analytics' && isAuthenticated) {
+      fetchAnalytics();
+    }
+  }, [view, isAuthenticated]);
+
+  // Automatic routing for users lacking 'sales' access or custom views
+  useEffect(() => {
+    if (isAuthenticated && userPermissions.length > 0) {
+      const allPossibleViews = ['sales', 'inventory', 'analytics', 'history', 'receivables', 'entities', 'expenses', 'fixed_costs', 'quotes', 'configuration'];
+      const allowedViews = allPossibleViews.filter(v => userPermissions.includes(v));
+      if (allowedViews.length > 0 && !allowedViews.includes(view)) {
+        setView(allowedViews[0] as any);
+      }
+    }
+  }, [isAuthenticated, userPermissions, view]);
+
+  useEffect(() => {
+    if (view === 'sales' && !isExpressModalOpen && isAuthenticated) {
       searchInputRef.current?.focus();
     }
-  }, [view, isExpressModalOpen]);
+  }, [view, isExpressModalOpen, isAuthenticated]);
 
   const handleSale = async (items: { product_id: string; quantity: number }[], method: string, customer_id?: string) => {
     const res = await fetch('/api/sales/bulk', {
@@ -168,6 +201,8 @@ export default function App() {
     }
   };
 
+  const hasPermission = (permission: string) => userPermissions.includes(permission);
+
   if (isAuthenticated === null) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-slate-950">
@@ -181,10 +216,9 @@ export default function App() {
     return (
       <>
         <Toaster position="top-right" theme="light" />
-        <LoginView onLoginSuccess={() => {
+        <LoginView onLoginSuccess={(permissions) => {
           setIsAuthenticated(true);
-          fetchProducts();
-          fetchAnalytics();
+          setUserPermissions(permissions);
         }} />
       </>
     );
@@ -204,66 +238,86 @@ export default function App() {
         </div>
 
         <nav className="flex-1 mt-4">
-          <SidebarItem
-            icon={ShoppingCart}
-            label="Terminal POS"
-            active={view === 'sales'}
-            onClick={() => setView('sales')}
-          />
-          <SidebarItem
-            icon={Package}
-            label="Inventario"
-            active={view === 'inventory'}
-            onClick={() => setView('inventory')}
-          />
-          <SidebarItem
-            icon={BarChart3}
-            label="Reportes"
-            active={view === 'analytics'}
-            onClick={() => setView('analytics')}
-          />
-          <SidebarItem
-            icon={History}
-            label="Historial"
-            active={view === 'history'}
-            onClick={() => setView('history')}
-          />
-          <SidebarItem
-            icon={CreditCard}
-            label="Cuentas por Cobrar"
-            active={view === 'receivables'}
-            onClick={() => setView('receivables')}
-          />
-          <SidebarItem
-            icon={Users}
-            label="Entidades"
-            active={view === 'entities'}
-            onClick={() => setView('entities')}
-          />
-          <SidebarItem
-            icon={Receipt}
-            label="Gastos de Caja"
-            active={view === 'expenses'}
-            onClick={() => setView('expenses')}
-          />
-          <SidebarItem
-            icon={Lock}
-            label="Costos Fijos"
-            active={view === 'fixed_costs'}
-            onClick={() => setView('fixed_costs')}
-          />
-          <SidebarItem
-            icon={FileText}
-            label="Cotizaciones"
-            active={view === 'quotes'}
-            onClick={() => setView('quotes')}
-          />
-          <SidebarItem
-            icon={Settings}
-            label="Configuración"
-            active={view === 'configuration'}
-            onClick={() => setView('configuration')}
-          />
+          {hasPermission('sales') && (
+            <SidebarItem
+              icon={ShoppingCart}
+              label="Terminal POS"
+              active={view === 'sales'}
+              onClick={() => setView('sales')}
+            />
+          )}
+          {hasPermission('inventory') && (
+            <SidebarItem
+              icon={Package}
+              label="Inventario"
+              active={view === 'inventory'}
+              onClick={() => setView('inventory')}
+            />
+          )}
+          {hasPermission('analytics') && (
+            <SidebarItem
+              icon={BarChart3}
+              label="Reportes"
+              active={view === 'analytics'}
+              onClick={() => setView('analytics')}
+            />
+          )}
+          {hasPermission('history') && (
+            <SidebarItem
+              icon={History}
+              label="Historial"
+              active={view === 'history'}
+              onClick={() => setView('history')}
+            />
+          )}
+          {hasPermission('receivables') && (
+            <SidebarItem
+              icon={CreditCard}
+              label="Cuentas por Cobrar"
+              active={view === 'receivables'}
+              onClick={() => setView('receivables')}
+            />
+          )}
+          {hasPermission('entities') && (
+            <SidebarItem
+              icon={Users}
+              label="Entidades"
+              active={view === 'entities'}
+              onClick={() => setView('entities')}
+            />
+          )}
+          {hasPermission('expenses') && (
+            <SidebarItem
+              icon={Receipt}
+              label="Gastos de Caja"
+              active={view === 'expenses'}
+              onClick={() => setView('expenses')}
+            />
+          )}
+          {hasPermission('fixed_costs') && (
+            <SidebarItem
+              icon={Lock}
+              label="Costos Fijos"
+              active={view === 'fixed_costs'}
+              onClick={() => setView('fixed_costs')}
+            />
+          )}
+          {hasPermission('quotes') && (
+            <SidebarItem
+              icon={FileText}
+              label="Cotizaciones"
+              active={view === 'quotes'}
+              onClick={() => setView('quotes')}
+            />
+          )}
+          {hasPermission('configuration') && (
+            <SidebarItem
+              icon={Settings}
+              label="Configuración"
+              active={view === 'configuration'}
+              onClick={() => setView('configuration')}
+            />
+          )}
         </nav>
 
         <div className="p-4 border-t border-[var(--line)] space-y-2">

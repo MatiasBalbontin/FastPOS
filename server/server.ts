@@ -34,6 +34,17 @@ if (checkSettings.count === 0) {
   insertSetting.run('company_bank_details', process.env.COMPANY_BANK_DETAILS || '');
 }
 
+import { requireAuth, hashPassword } from './middleware/auth';
+
+// Users seeding
+const checkUsers = db.prepare("SELECT COUNT(*) as count FROM users").get() as { count: number };
+if (checkUsers.count === 0) {
+  const adminPassword = process.env.ADMIN_PASSWORD || 'admin';
+  const hashed = hashPassword(adminPassword);
+  db.prepare("INSERT INTO users (username, password, permissions) VALUES (?, ?, ?)")
+    .run('admin', hashed, '["sales","inventory","analytics","history","receivables","entities","expenses","fixed_costs","quotes","configuration"]');
+}
+
 // Routes and middlewares imports
 import authRouter from './routes/auth';
 import productsRouter from './routes/products';
@@ -46,8 +57,8 @@ import receivablesRouter from './routes/receivables';
 import entitiesRouter from './routes/entities';
 import quotesRouter from './routes/quotes';
 import settingsRouter from './routes/settings';
+import usersRouter from './routes/users';
 
-import { requireAuth } from './middleware/auth';
 import { errorHandler } from './middleware/errorHandler';
 import { generalLimiter } from './middleware/rateLimiter';
 import { setupSwagger } from './swagger';
@@ -98,6 +109,7 @@ async function startServer() {
   app.use('/api/customers', entitiesRouter);
   app.use('/api/quotes', quotesRouter);
   app.use('/api/company-settings', settingsRouter);
+  app.use('/api/users', usersRouter);
 
   // Centralized Error Handling Middleware
   app.use(errorHandler);

@@ -110,6 +110,14 @@ export function initializeSchema() {
       created_at DATETIME
     );
 
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE NOT NULL,
+      password TEXT NOT NULL,
+      permissions TEXT NOT NULL,
+      active INTEGER DEFAULT 1
+    );
+
     CREATE INDEX IF NOT EXISTS idx_sales_created_at ON sales(created_at);
     CREATE INDEX IF NOT EXISTS idx_sales_ticket_id ON sales(ticket_id);
     CREATE INDEX IF NOT EXISTS idx_sales_product_id ON sales(product_id);
