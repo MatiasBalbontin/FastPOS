@@ -390,7 +390,7 @@ export function SalesView({ searchInputRef, onSale, products, userPermissions, o
   const [closingCash, setClosingCash] = useState('');
   const [closingCard, setClosingCard] = useState('');
   const [summaryReport, setSummaryReport] = useState<any>(null);
-  const [elapsedText, setElapsedText] = useState('00h 00m');
+  const [elapsedText, setElapsedText] = useState('00:00');
 
   const checkShiftStatus = async () => {
     try {
@@ -419,13 +419,14 @@ export function SalesView({ searchInputRef, onSale, products, userPermissions, o
     if (!activeShift?.shift?.opening_time) return;
     const updateTimer = () => {
       const diffMs = new Date().getTime() - new Date(activeShift.shift.opening_time).getTime();
-      const totalMinutes = Math.floor(diffMs / 60000);
+      const totalSeconds = Math.max(0, Math.floor(diffMs / 1000));
+      const totalMinutes = Math.floor(totalSeconds / 60);
       const hrs = Math.floor(totalMinutes / 60);
       const mins = totalMinutes % 60;
-      setElapsedText(`${hrs.toString().padStart(2, '0')}h ${mins.toString().padStart(2, '0')}m`);
+      setElapsedText(`${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`);
     };
     updateTimer();
-    const interval = setInterval(updateTimer, 60000);
+    const interval = setInterval(updateTimer, 1000);
     return () => clearInterval(interval);
   }, [activeShift]);
 
