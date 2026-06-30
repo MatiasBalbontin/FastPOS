@@ -39,7 +39,8 @@ export function ConfigurationView() {
   });
 
   const availableModules = [
-    { id: 'sales', label: 'Terminal POS' },
+    { id: 'sales', label: 'Punto de Venta' },
+    { id: 'fiar', label: 'Permitir Fiar (Créditos)' },
     { id: 'inventory', label: 'Inventario' },
     { id: 'analytics', label: 'Reportes' },
     { id: 'history', label: 'Historial' },

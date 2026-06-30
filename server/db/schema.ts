@@ -118,6 +118,20 @@ export function initializeSchema() {
       active INTEGER DEFAULT 1
     );
 
+    CREATE TABLE IF NOT EXISTS cash_shifts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      opening_amount REAL NOT NULL,
+      opening_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+      expected_amount_cash REAL,
+      expected_amount_card REAL,
+      closing_amount_cash REAL,
+      closing_amount_card REAL,
+      closing_time DATETIME,
+      status TEXT DEFAULT 'open',
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_sales_created_at ON sales(created_at);
     CREATE INDEX IF NOT EXISTS idx_sales_ticket_id ON sales(ticket_id);
     CREATE INDEX IF NOT EXISTS idx_sales_product_id ON sales(product_id);
@@ -125,5 +139,7 @@ export function initializeSchema() {
     CREATE INDEX IF NOT EXISTS idx_receivables_customer_id ON receivables(customer_id);
     CREATE INDEX IF NOT EXISTS idx_customer_payments_customer_id ON customer_payments(customer_id);
     CREATE INDEX IF NOT EXISTS idx_sales_customer_id ON sales(customer_id);
+    CREATE INDEX IF NOT EXISTS idx_cash_shifts_user_id ON cash_shifts(user_id);
+    CREATE INDEX IF NOT EXISTS idx_cash_shifts_status ON cash_shifts(status);
   `);
 }

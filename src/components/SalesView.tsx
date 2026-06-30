@@ -11,7 +11,11 @@ import {
   CreditCard, 
   FileMinus, 
   AlertTriangle,
-  Package
+  Package,
+  Clock,
+  Unlock,
+  CheckCircle,
+  FileText
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { toast } from 'sonner';
@@ -21,6 +25,7 @@ interface SalesViewProps {
   searchInputRef: React.RefObject<HTMLInputElement | null>;
   onSale: (items: { product_id: string; quantity: number }[], method: string, customer_id?: string) => Promise<boolean>;
   products: Product[];
+  userPermissions: string[];
   onProductNotFound: (query: string) => void;
 }
 
@@ -67,9 +72,10 @@ interface PaymentModalProps {
   total: number;
   onClose: () => void;
   onConfirm: (method: string, customer_id?: string) => void;
+  canDeferPayment: boolean;
 }
 
-function PaymentModal({ total, onClose, onConfirm }: PaymentModalProps) {
+function PaymentModal({ total, onClose, onConfirm, canDeferPayment }: PaymentModalProps) {
   const [method, setMethod] = useState<'cash' | 'card' | 'cuenta_por_cobrar' | null>(null);
   const [received, setReceived] = useState('');
   const [confirmCard, setConfirmCard] = useState(false);
@@ -106,7 +112,7 @@ function PaymentModal({ total, onClose, onConfirm }: PaymentModalProps) {
         const data = await res.json();
         toast.error(data.error || "Error al crear cliente");
       } catch (e) {
-        toast.error("Error de servidor. ¿Reiniciaste la consola (npm run dev)?");
+        toast.error("Error de servidor. ¿Reiniciaste la consola?");
       }
     }
   };
@@ -143,7 +149,7 @@ function PaymentModal({ total, onClose, onConfirm }: PaymentModalProps) {
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[60] p-4">
-      <div className="bg-[var(--bg)] border-2 border-[var(--line)] w-full max-w-lg shadow-2xl overflow-hidden">
+      <div className="bg-[var(--bg)] border-2 border-[var(--line)] w-full max-w-lg shadow-2xl overflow-hidden rounded-2xl">
         <div className="p-6 border-b border-[var(--line)] flex justify-between items-center bg-[var(--ink)] text-[var(--bg)]">
           <h3 className="font-bold uppercase italic tracking-widest text-sm">Finalizar Venta // Pago</h3>
           <button onClick={onClose}><X size={18} /></button>
@@ -172,8 +178,19 @@ function PaymentModal({ total, onClose, onConfirm }: PaymentModalProps) {
                 <span className="font-bold uppercase text-xs tracking-widest text-center">Tarjeta</span>
               </button>
               <button
-                onClick={() => setMethod('cuenta_por_cobrar')}
-                className="flex flex-col items-center gap-4 p-6 border-2 border-[var(--line)] hover:bg-[var(--ink)] hover:text-[var(--bg)] transition-all group rounded-xl"
+                onClick={() => {
+                  if (canDeferPayment) {
+                    setMethod('cuenta_por_cobrar');
+                  }
+                }}
+                disabled={!canDeferPayment}
+                className={cn(
+                  "flex flex-col items-center gap-4 p-6 border-2 border-[var(--line)] transition-all group rounded-xl",
+                  canDeferPayment 
+                    ? "hover:bg-[var(--ink)] hover:text-[var(--bg)]" 
+                    : "opacity-30 cursor-not-allowed bg-gray-50 border-gray-200"
+                )}
+                title={!canDeferPayment ? "No tiene permisos para fiar (solicite autorización)" : undefined}
               >
                 <FileMinus size={40} className="opacity-40 group-hover:opacity-100" />
                 <span className="font-bold uppercase text-xs tracking-widest text-center">Por Cobrar</span>
@@ -206,14 +223,14 @@ function PaymentModal({ total, onClose, onConfirm }: PaymentModalProps) {
               <div className="flex gap-4">
                 <button
                   onClick={() => setMethod(null)}
-                  className="flex-1 border border-[var(--line)] py-4 font-bold uppercase text-xs hover:bg-white transition-colors"
+                  className="flex-1 border border-[var(--line)] py-4 font-bold uppercase text-xs hover:bg-white transition-colors rounded-xl"
                 >
                   Volver
                 </button>
                 <button
                   disabled={change < 0}
                   onClick={() => onConfirm('cash')}
-                  className="flex-[2] bg-[var(--ink)] text-[var(--bg)] py-4 font-bold uppercase text-xs hover:opacity-90 transition-opacity disabled:opacity-30"
+                  className="flex-[2] bg-[var(--ink)] text-[var(--bg)] py-4 font-bold uppercase text-xs hover:opacity-90 transition-opacity disabled:opacity-30 rounded-xl"
                 >
                   Confirmar Venta
                 </button>
@@ -225,19 +242,19 @@ function PaymentModal({ total, onClose, onConfirm }: PaymentModalProps) {
                 <>
                   <div className="py-8">
                     <CreditCard size={64} className="mx-auto mb-4 opacity-20" />
-                    <p className="text-lg font-bold italic serif">¿Procesar pago con tarjeta?</p>
+                    <p className="text-lg font-bold italic">¿Procesar pago con tarjeta?</p>
                     <p className="text-xs opacity-50 mt-2">Asegúrese de que la transacción en el terminal sea exitosa.</p>
                   </div>
                   <div className="flex gap-4">
                     <button
                       onClick={() => setMethod(null)}
-                      className="flex-1 border border-[var(--line)] py-4 font-bold uppercase text-xs hover:bg-white transition-colors"
+                      className="flex-1 border border-[var(--line)] py-4 font-bold uppercase text-xs hover:bg-white transition-colors rounded-xl"
                     >
                       Volver
                     </button>
                     <button
                       onClick={() => setConfirmCard(true)}
-                      className="flex-[2] bg-[var(--ink)] text-[var(--bg)] py-4 font-bold uppercase text-xs hover:opacity-90 transition-opacity"
+                      className="flex-[2] bg-[var(--ink)] text-[var(--bg)] py-4 font-bold uppercase text-xs hover:opacity-90 transition-opacity rounded-xl"
                     >
                       Sí, Procesar
                     </button>
@@ -245,21 +262,21 @@ function PaymentModal({ total, onClose, onConfirm }: PaymentModalProps) {
                 </>
               ) : (
                 <div className="space-y-6">
-                  <div className="py-8 bg-amber-50 border-2 border-amber-200 p-6">
+                  <div className="py-8 bg-amber-50 border-2 border-amber-200 p-6 rounded-xl">
                     <AlertTriangle size={32} className="mx-auto mb-4 text-amber-600" />
-                    <p className="text-sm font-bold uppercase tracking-widest">Confirmación de Seguridad</p>
-                    <p className="text-xs opacity-70 mt-2">¿Está seguro de que desea cargar esta venta a tarjeta?</p>
+                    <p className="text-sm font-bold uppercase tracking-widest text-amber-800">Confirmación de Seguridad</p>
+                    <p className="text-xs opacity-70 mt-2 text-amber-700">¿Está seguro de que desea cargar esta venta a tarjeta?</p>
                   </div>
                   <div className="flex gap-4">
                     <button
                       onClick={() => setConfirmCard(false)}
-                      className="flex-1 border border-[var(--line)] py-4 font-bold uppercase text-xs hover:bg-white transition-colors"
+                      className="flex-1 border border-[var(--line)] py-4 font-bold uppercase text-xs hover:bg-white transition-colors rounded-xl"
                     >
                       No, Revisar
                     </button>
                     <button
                       onClick={() => onConfirm('card')}
-                      className="flex-[2] bg-green-600 text-white py-4 font-bold uppercase text-xs hover:opacity-90 transition-opacity"
+                      className="flex-[2] bg-green-600 text-white py-4 font-bold uppercase text-xs hover:opacity-90 transition-opacity rounded-xl"
                     >
                       Confirmar y Rebajar Stock
                     </button>
@@ -325,11 +342,11 @@ function PaymentModal({ total, onClose, onConfirm }: PaymentModalProps) {
                   )}
 
                   <div className="flex gap-4 mt-6">
-                    <button onClick={() => { setMethod(null); setSelectedCustomer(null); setSearchCustomer(''); }} className="flex-1 border border-[var(--line)] py-4 font-bold uppercase text-xs hover:bg-white transition-colors text-center">Volver</button>
+                    <button onClick={() => { setMethod(null); setSelectedCustomer(null); setSearchCustomer(''); }} className="flex-1 border border-[var(--line)] py-4 font-bold uppercase text-xs hover:bg-white transition-colors text-center rounded-xl">Volver</button>
                     <button 
                       disabled={!selectedCustomer}
                       onClick={() => onConfirm('cuenta_por_cobrar', selectedCustomer?.id)} 
-                      className="flex-[2] bg-[var(--ink)] text-[var(--bg)] py-4 font-bold uppercase text-xs hover:opacity-90 transition-opacity disabled:opacity-30"
+                      className="flex-[2] bg-[var(--ink)] text-[var(--bg)] py-4 font-bold uppercase text-xs hover:opacity-90 transition-opacity disabled:opacity-30 rounded-xl"
                     >
                       Confirmar Fiado
                     </button>
@@ -346,8 +363,8 @@ function PaymentModal({ total, onClose, onConfirm }: PaymentModalProps) {
                   <input type="text" placeholder="Apellido *" value={newCustomer.last_name} onChange={e => setNewCustomer({...newCustomer, last_name: e.target.value})} className="w-full bg-white border border-[var(--line)] p-3 text-sm rounded focus:outline-none" />
                   
                   <div className="flex gap-4 pt-2">
-                    <button onClick={() => setIsCreatingCustomer(false)} className="flex-1 border border-[var(--line)] py-3 font-bold uppercase text-xs hover:bg-white transition-colors text-center">Cancelar</button>
-                    <button disabled={!newCustomer.first_name || !newCustomer.last_name} onClick={handleCreateCustomer} className="flex-1 bg-[var(--primary)] text-white py-3 font-bold uppercase text-xs hover:opacity-90 transition-opacity disabled:opacity-30">Guardar</button>
+                    <button onClick={() => setIsCreatingCustomer(false)} className="flex-1 border border-[var(--line)] py-3 font-bold uppercase text-xs hover:bg-white transition-colors text-center rounded-xl">Cancelar</button>
+                    <button disabled={!newCustomer.first_name || !newCustomer.last_name} onClick={handleCreateCustomer} className="flex-1 bg-[var(--primary)] text-white py-3 font-bold uppercase text-xs hover:opacity-90 transition-opacity disabled:opacity-30 rounded-xl">Guardar</button>
                   </div>
                 </div>
               )}
@@ -359,11 +376,115 @@ function PaymentModal({ total, onClose, onConfirm }: PaymentModalProps) {
   );
 }
 
-export function SalesView({ searchInputRef, onSale, products, onProductNotFound }: SalesViewProps) {
+export function SalesView({ searchInputRef, onSale, products, userPermissions, onProductNotFound }: SalesViewProps) {
   const [query, setQuery] = useState('');
   const [cart, setCart] = useState<{ product: Product; quantity: number }[]>([]);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
+
+  // --- Cash Shift State ---
+  const [activeShift, setActiveShift] = useState<any>(null);
+  const [loadingShift, setLoadingShift] = useState(true);
+  const [openingAmount, setOpeningAmount] = useState('');
+  const [closingModalOpen, setClosingModalOpen] = useState(false);
+  const [closingCash, setClosingCash] = useState('');
+  const [closingCard, setClosingCard] = useState('');
+  const [summaryReport, setSummaryReport] = useState<any>(null);
+  const [elapsedText, setElapsedText] = useState('00h 00m');
+
+  const checkShiftStatus = async () => {
+    try {
+      const res = await fetch('/api/cash-shifts/active');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.active) {
+          setActiveShift(data);
+        } else {
+          setActiveShift(null);
+        }
+      }
+    } catch (e) {
+      console.error("Error checking cash shift", e);
+    } finally {
+      setLoadingShift(false);
+    }
+  };
+
+  useEffect(() => {
+    checkShiftStatus();
+  }, []);
+
+  // Update timer in real time
+  useEffect(() => {
+    if (!activeShift?.shift?.opening_time) return;
+    const updateTimer = () => {
+      const diffMs = new Date().getTime() - new Date(activeShift.shift.opening_time).getTime();
+      const totalMinutes = Math.floor(diffMs / 60000);
+      const hrs = Math.floor(totalMinutes / 60);
+      const mins = totalMinutes % 60;
+      setElapsedText(`${hrs.toString().padStart(2, '0')}h ${mins.toString().padStart(2, '0')}m`);
+    };
+    updateTimer();
+    const interval = setInterval(updateTimer, 60000);
+    return () => clearInterval(interval);
+  }, [activeShift]);
+
+  const handleOpenShiftSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amount = parseFloat(openingAmount);
+    if (isNaN(amount) || amount < 0) {
+      toast.error("Ingrese un monto inicial válido");
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/cash-shifts/open', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ opening_amount: amount })
+      });
+      if (res.ok) {
+        toast.success("Caja abierta exitosamente. ¡Buen turno!");
+        setOpeningAmount('');
+        checkShiftStatus();
+      } else {
+        const err = await res.json();
+        toast.error(err.error || "Error al abrir la caja");
+      }
+    } catch {
+      toast.error("Error de conexión con el servidor");
+    }
+  };
+
+  const handleCloseShiftSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cash = parseFloat(closingCash);
+    const card = parseFloat(closingCard);
+    if (isNaN(cash) || cash < 0 || isNaN(card) || card < 0) {
+      toast.error("Ingrese montos declarados válidos");
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/cash-shifts/close', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ closing_amount_cash: cash, closing_amount_card: card })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setSummaryReport(data);
+        setClosingModalOpen(false);
+        setClosingCash('');
+        setClosingCard('');
+      } else {
+        const err = await res.json();
+        toast.error(err.error || "Error al cerrar la caja");
+      }
+    } catch {
+      toast.error("Error de conexión");
+    }
+  };
 
   const filtered = query.trim() ? products.filter((p: any) =>
     matchProduct(p, query)
@@ -419,7 +540,6 @@ export function SalesView({ searchInputRef, onSale, products, onProductNotFound 
     const cleanQuery = query.trim().toUpperCase();
     if (!cleanQuery) return;
 
-    // 1. Exact ID/barcode match
     const exactMatch = products.find((p: any) => p.id === cleanQuery);
     if (exactMatch) {
       addToCart(exactMatch);
@@ -428,7 +548,6 @@ export function SalesView({ searchInputRef, onSale, products, onProductNotFound 
       return;
     }
 
-    // 2. Select highlighted item from keyboard navigation
     if (selectedIndex >= 0 && selectedIndex < filtered.length) {
       addToCart(filtered[selectedIndex]);
       setQuery('');
@@ -436,7 +555,6 @@ export function SalesView({ searchInputRef, onSale, products, onProductNotFound 
       return;
     }
 
-    // 3. Fallback: select first match in suggestions
     if (filtered.length > 0) {
       addToCart(filtered[0]);
       setQuery('');
@@ -444,7 +562,6 @@ export function SalesView({ searchInputRef, onSale, products, onProductNotFound 
       return;
     }
 
-    // 4. No matches: trigger creation modal
     onProductNotFound(cleanQuery);
     setSelectedIndex(-1);
   };
@@ -475,22 +592,167 @@ export function SalesView({ searchInputRef, onSale, products, onProductNotFound 
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'F10') {
         e.preventDefault();
-        if (cart.length > 0) {
+        if (cart.length > 0 && activeShift) {
           setIsPaymentModalOpen(true);
         }
       }
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [cart]);
+  }, [cart, activeShift]);
 
+  if (loadingShift) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-gray-50">
+        <div className="text-sm font-semibold text-gray-400 animate-pulse uppercase tracking-wider">Cargando estado de caja...</div>
+      </div>
+    );
+  }
+
+  // --- 1. RENDER APERTURA DE CAJA ---
+  if (!activeShift) {
+    return (
+      <div className="min-h-full flex items-center justify-center p-6 bg-gray-100">
+        <div className="bg-white border border-[var(--line)] w-full max-w-md p-8 rounded-3xl shadow-xl space-y-6">
+          <div className="text-center space-y-2">
+            <div className="mx-auto w-16 h-16 bg-blue-50 text-[var(--primary)] flex items-center justify-center rounded-2xl shadow-inner">
+              <Unlock size={32} />
+            </div>
+            <h3 className="text-2xl font-black text-[var(--ink)] uppercase tracking-wide">Iniciar Caja</h3>
+            <p className="text-sm text-gray-500">Debe declarar el saldo en efectivo de la gaveta para iniciar el Punto de Venta.</p>
+          </div>
+
+          <form onSubmit={handleOpenShiftSubmit} className="space-y-4">
+            <div>
+              <label className="text-[10px] font-black uppercase text-gray-400 block mb-1">Monto Inicial en Efectivo ($) *</label>
+              <input
+                type="number"
+                required
+                min="0"
+                autoFocus
+                placeholder="Ej: 50000"
+                value={openingAmount}
+                onChange={e => setOpeningAmount(e.target.value)}
+                className="w-full bg-gray-50 border border-[var(--line)] p-4 text-2xl font-mono text-center focus:bg-white rounded-2xl focus:outline-none focus:ring-4 ring-[var(--primary)]/10 font-bold"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="w-full bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white py-4 rounded-2xl font-bold uppercase tracking-wider text-xs transition-all shadow-lg shadow-blue-100"
+            >
+              Abrir Turno de Caja
+            </button>
+          </form>
+        </div>
+
+        {/* Closing Shift summary report modal if open */}
+        {summaryReport && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[80] p-4">
+            <div className="bg-white border border-[var(--line)] w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+              <div className="p-6 border-b border-[var(--line)] bg-[var(--ink)] text-white text-center">
+                <CheckCircle size={32} className="mx-auto mb-2 text-green-500 animate-bounce" />
+                <h3 className="font-bold uppercase tracking-widest text-sm">Resumen de Turno de Caja Cerrado</h3>
+                <p className="text-xs opacity-75 mt-1">Caja #{summaryReport.shift.id} // Turno Finalizado</p>
+              </div>
+
+              <div className="p-6 space-y-6 overflow-y-auto flex-1">
+                <div className="grid grid-cols-2 gap-4 text-xs font-semibold bg-gray-50 p-4 rounded-2xl border border-[var(--line)]">
+                  <div>Apertura: {new Date(summaryReport.shift.opening_time).toLocaleString()}</div>
+                  <div>Cierre: {new Date(summaryReport.shift.closing_time).toLocaleString()}</div>
+                  <div>Monto Inicial: ${summaryReport.shift.opening_amount.toLocaleString()}</div>
+                  <div className="text-blue-700 font-bold">Ventas al fiado: ${summaryReport.totals.sales_receivables.toLocaleString()}</div>
+                </div>
+
+                <div className="space-y-4">
+                  <h4 className="text-[10px] font-black uppercase text-gray-400 tracking-wider">Arqueo de Efectivo</h4>
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    <div className="p-3 bg-white border border-[var(--line)] rounded-xl">
+                      <div className="text-[9px] text-gray-400 font-bold uppercase mb-0.5">Esperado</div>
+                      <div className="font-mono font-bold">${summaryReport.shift.expected_amount_cash.toLocaleString()}</div>
+                    </div>
+                    <div className="p-3 bg-white border border-[var(--line)] rounded-xl">
+                      <div className="text-[9px] text-gray-400 font-bold uppercase mb-0.5">Declarado</div>
+                      <div className="font-mono font-bold">${summaryReport.shift.closing_amount_cash.toLocaleString()}</div>
+                    </div>
+                    {(() => {
+                      const diff = summaryReport.shift.closing_amount_cash - summaryReport.shift.expected_amount_cash;
+                      return (
+                        <div className={cn("p-3 border rounded-xl", diff === 0 ? "bg-green-50 border-green-200 text-green-700" : diff > 0 ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-red-50 border-red-200 text-red-700")}>
+                          <div className="text-[9px] font-bold uppercase mb-0.5">Diferencia</div>
+                          <div className="font-mono font-bold">{diff >= 0 ? '+' : ''}${diff.toLocaleString()}</div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h4 className="text-[10px] font-black uppercase text-gray-400 tracking-wider">Arqueo de Tarjetas</h4>
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    <div className="p-3 bg-white border border-[var(--line)] rounded-xl">
+                      <div className="text-[9px] text-gray-400 font-bold uppercase mb-0.5">Esperado</div>
+                      <div className="font-mono font-bold">${summaryReport.shift.expected_amount_card.toLocaleString()}</div>
+                    </div>
+                    <div className="p-3 bg-white border border-[var(--line)] rounded-xl">
+                      <div className="text-[9px] text-gray-400 font-bold uppercase mb-0.5">Declarado</div>
+                      <div className="font-mono font-bold">${summaryReport.shift.closing_amount_card.toLocaleString()}</div>
+                    </div>
+                    {(() => {
+                      const diff = summaryReport.shift.expected_amount_card - summaryReport.shift.expected_amount_card; // Note: expected vs expected logic is 0 by diff
+                      const realDiff = summaryReport.shift.closing_amount_card - summaryReport.shift.expected_amount_card;
+                      return (
+                        <div className={cn("p-3 border rounded-xl", realDiff === 0 ? "bg-green-50 border-green-200 text-green-700" : realDiff > 0 ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-red-50 border-red-200 text-red-700")}>
+                          <div className="text-[9px] font-bold uppercase mb-0.5">Diferencia</div>
+                          <div className="font-mono font-bold">{realDiff >= 0 ? '+' : ''}${realDiff.toLocaleString()}</div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-[var(--line)] bg-gray-50 flex">
+                <button
+                  onClick={() => setSummaryReport(null)}
+                  className="w-full bg-[var(--ink)] text-white py-3 rounded-2xl font-bold uppercase text-xs hover:opacity-90 transition-opacity"
+                >
+                  Entendido, Cerrar Reporte
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // --- 2. RENDER PUNTO DE VENTA (CAJA ACTIVA) ---
   return (
     <div className="flex h-full">
       {/* POS Left: Search & Results */}
       <div className="flex-1 p-8 flex flex-col">
-        <div className="mb-8">
-          <h2 className="text-3xl font-bold tracking-tight text-[var(--ink)] mb-1">Terminal POS</h2>
-          <p className="text-sm text-gray-500">Escanee productos para cargar la comanda.</p>
+        <div className="mb-8 flex justify-between items-start">
+          <div>
+            <h2 className="text-3xl font-bold tracking-tight text-[var(--ink)] mb-1">Punto de Venta</h2>
+            <p className="text-sm text-gray-500">Escanee productos para cargar la comanda.</p>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            {/* Live Clock Timer */}
+            <div className="flex items-center gap-2.5 bg-white px-4 py-2.5 rounded-xl border border-[var(--line)] shadow-sm">
+              <Clock size={16} className="text-gray-400 animate-spin" style={{ animationDuration: '8s' }} />
+              <div className="text-xs font-black uppercase text-gray-400">Duración:</div>
+              <div className="text-sm font-bold font-mono text-[var(--primary)]">{elapsedText}</div>
+            </div>
+            
+            <button
+              onClick={() => setClosingModalOpen(true)}
+              className="bg-red-50 hover:bg-red-600 hover:text-white text-red-600 font-bold uppercase text-xs px-5 py-3 rounded-xl transition-all shadow-md flex items-center gap-1.5"
+            >
+              ✕ Cerrar Caja
+            </button>
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="relative mb-8">
@@ -510,7 +772,7 @@ export function SalesView({ searchInputRef, onSale, products, onProductNotFound 
           />
 
           {query && filtered.length > 0 && (
-            <div className="absolute top-full left-0 w-full bg-white border border-[var(--line)] border-t-0 shadow-2xl z-10">
+            <div className="absolute top-full left-0 w-full bg-white border border-[var(--line)] border-t-0 shadow-2xl z-10 rounded-b-xl overflow-hidden">
               {filtered.map((p: any, index: number) => (
                 <button
                   key={p.id}
@@ -609,7 +871,66 @@ export function SalesView({ searchInputRef, onSale, products, onProductNotFound 
           total={total}
           onClose={() => setIsPaymentModalOpen(false)}
           onConfirm={handleFinishSale}
+          canDeferPayment={userPermissions.includes('fiar')}
         />
+      )}
+
+      {/* Arqueo / Cierre Shift Modal */}
+      {closingModalOpen && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
+          <div className="bg-white border border-[var(--line)] w-full max-w-md rounded-3xl shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-[var(--line)] bg-red-600 text-white flex justify-between items-center">
+              <h3 className="font-bold uppercase tracking-widest text-sm">Cerrar Caja & Arqueo</h3>
+              <button onClick={() => setClosingModalOpen(false)} className="text-white hover:opacity-75">✕</button>
+            </div>
+
+            <form onSubmit={handleCloseShiftSubmit} className="p-6 space-y-5">
+              <p className="text-xs text-gray-500">Ingrese la suma física contada de Efectivo y Tarjetas para contrastar contra el registro del sistema.</p>
+              
+              <div>
+                <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Efectivo Contado ($) *</label>
+                <input
+                  type="number"
+                  required
+                  min="0"
+                  placeholder="Ej: 65000"
+                  value={closingCash}
+                  onChange={e => setClosingCash(e.target.value)}
+                  className="w-full bg-gray-50 border border-[var(--line)] p-3 text-lg font-mono text-center rounded-xl focus:outline-none focus:ring-2 ring-red-100 font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Tarjeta Declarado ($) *</label>
+                <input
+                  type="number"
+                  required
+                  min="0"
+                  placeholder="Ej: 120000"
+                  value={closingCard}
+                  onChange={e => setClosingCard(e.target.value)}
+                  className="w-full bg-gray-50 border border-[var(--line)] p-3 text-lg font-mono text-center rounded-xl focus:outline-none focus:ring-2 ring-red-100 font-bold"
+                />
+              </div>
+
+              <div className="pt-2 flex gap-3">
+                <button
+                  type="submit"
+                  className="flex-1 bg-red-600 text-white py-3.5 rounded-2xl font-bold uppercase text-xs hover:bg-red-700 transition-all shadow-md shadow-red-100"
+                >
+                  Confirmar y Cerrar Turno
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setClosingModalOpen(false)}
+                  className="px-6 border border-[var(--line)] py-3.5 rounded-2xl font-bold uppercase text-xs hover:bg-gray-50 transition-all"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

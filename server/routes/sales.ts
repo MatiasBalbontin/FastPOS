@@ -73,6 +73,15 @@ router.post('/bulk', validateBody(SaleBulkSchema), (req, res, next) => {
   const { items, method = 'cash', customer_id } = req.body;
   const ticket_id = `TKT-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
+  if (method === 'cuenta_por_cobrar' && !req.session.permissions?.includes('fiar')) {
+    return res.status(403).json({ error: 'No tiene permisos para realizar ventas al fiado' });
+  }
+
+  const activeShift = db.prepare("SELECT id FROM cash_shifts WHERE status = 'open'").get();
+  if (!activeShift) {
+    return res.status(400).json({ error: 'Debe iniciar la caja antes de registrar ventas' });
+  }
+
   try {
     const transaction = db.transaction(() => {
       const results = [];

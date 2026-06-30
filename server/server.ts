@@ -59,6 +59,7 @@ import quotesRouter from './routes/quotes';
 import settingsRouter from './routes/settings';
 import usersRouter from './routes/users';
 import historyRouter from './routes/history';
+import cashShiftsRouter from './routes/cashShifts';
 
 import { errorHandler } from './middleware/errorHandler';
 import { generalLimiter } from './middleware/rateLimiter';
@@ -112,6 +113,7 @@ async function startServer() {
   app.use('/api/company-settings', settingsRouter);
   app.use('/api/users', usersRouter);
   app.use('/api/history', historyRouter);
+  app.use('/api/cash-shifts', cashShiftsRouter);
 
   // Centralized Error Handling Middleware
   app.use(errorHandler);

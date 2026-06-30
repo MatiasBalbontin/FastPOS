@@ -66,6 +66,15 @@ export const ProductUpdateSchema = z.object({
   new_stock: z.coerce.number().int().nonnegative().optional()
 });
 
+export const ShiftOpenSchema = z.object({
+  opening_amount: z.coerce.number().nonnegative()
+});
+
+export const ShiftCloseSchema = z.object({
+  closing_amount_cash: z.coerce.number().nonnegative(),
+  closing_amount_card: z.coerce.number().nonnegative()
+});
+
 export const validateBody = (schema: z.ZodSchema) => {
   return (req: express.Request, res: express.Response, next: express.NextFunction) => {
     try {

@@ -241,7 +241,7 @@ export default function App() {
           {hasPermission('sales') && (
             <SidebarItem
               icon={ShoppingCart}
-              label="Terminal POS"
+              label="Punto de Venta"
               active={view === 'sales'}
               onClick={() => setView('sales')}
             />
@@ -350,6 +350,7 @@ export default function App() {
             searchInputRef={searchInputRef}
             onSale={handleSale}
             products={products}
+            userPermissions={userPermissions}
             onProductNotFound={(id: string) => {
               setScannedId(id.trim());
               setIsExpressModalOpen(true);
