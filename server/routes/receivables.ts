@@ -1,7 +1,10 @@
 import express from 'express';
 import { db } from '../db/index';
+import { requirePermission } from '../middleware/auth';
 
 const router = express.Router();
+
+router.use(requirePermission('receivables'));
 
 // GET /api/receivables
 router.get('/', (req, res, next) => {
