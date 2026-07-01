@@ -102,12 +102,23 @@ export function AnalyticsView({ analytics, startDate, setStartDate, endDate, set
   const currentProfit = currentRevenue - currentCost;
   const margin = currentRevenue > 0 ? (currentProfit / currentRevenue) * 100 : 0;
 
+  // Helper to parse SQLite UTC date strings safely across browsers/timezones
+  const parseUTCDate = (dateStr: string) => {
+    if (!dateStr) return new Date();
+    if (dateStr.endsWith('Z') || dateStr.includes('T')) {
+      return new Date(dateStr);
+    }
+    // Convert "YYYY-MM-DD HH:MM:SS" to "YYYY-MM-DDTHH:MM:SSZ"
+    const formatted = dateStr.replace(' ', 'T') + 'Z';
+    return new Date(formatted);
+  };
+
   // Helper to format shift duration
   const getDurationText = (opening: string, closing: string | null) => {
-    const end = closing ? new Date(closing).getTime() : new Date().getTime();
-    const start = new Date(opening).getTime();
+    const end = closing ? parseUTCDate(closing).getTime() : new Date().getTime();
+    const start = parseUTCDate(opening).getTime();
     const diffMs = end - start;
-    const totalMinutes = Math.floor(diffMs / 60000);
+    const totalMinutes = Math.max(0, Math.floor(diffMs / 60000));
     const hrs = Math.floor(totalMinutes / 60);
     const mins = totalMinutes % 60;
     return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;

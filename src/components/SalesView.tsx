@@ -415,11 +415,23 @@ export function SalesView({ searchInputRef, onSale, products, userPermissions, c
     checkShiftStatus();
   }, []);
 
+  // Helper to parse SQLite UTC date strings safely across browsers/timezones
+  const parseUTCDate = (dateStr: string) => {
+    if (!dateStr) return new Date();
+    if (dateStr.endsWith('Z') || dateStr.includes('T')) {
+      return new Date(dateStr);
+    }
+    // Convert "YYYY-MM-DD HH:MM:SS" to "YYYY-MM-DDTHH:MM:SSZ"
+    const formatted = dateStr.replace(' ', 'T') + 'Z';
+    return new Date(formatted);
+  };
+
   // Update timer in real time
   useEffect(() => {
     if (!activeShift?.shift?.opening_time) return;
     const updateTimer = () => {
-      const diffMs = new Date().getTime() - new Date(activeShift.shift.opening_time).getTime();
+      const parsedOpening = parseUTCDate(activeShift.shift.opening_time);
+      const diffMs = new Date().getTime() - parsedOpening.getTime();
       const totalSeconds = Math.max(0, Math.floor(diffMs / 1000));
       const totalMinutes = Math.floor(totalSeconds / 60);
       const hrs = Math.floor(totalMinutes / 60);

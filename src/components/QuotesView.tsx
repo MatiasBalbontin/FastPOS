@@ -1,13 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Plus, 
-  Search, 
-  Edit2, 
-  Trash2, 
-  X, 
-  Download, 
-  Minus, 
-  ShoppingCart 
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  Plus,
+  Search,
+  Edit2,
+  Trash2,
+  X,
+  Download,
+  Minus,
+  ShoppingCart
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { jsPDF } from 'jspdf';
@@ -32,12 +32,12 @@ const normalizeString = (str: string | null | undefined): string => {
 const matchProduct = (product: Product, query: string): boolean => {
   const queryNormalized = normalizeString(query).trim();
   if (!queryNormalized) return false;
-  
+
   const queryTokens = queryNormalized.split(/\s+/);
   const nameNormalized = normalizeString(product.name);
   const idNormalized = normalizeString(product.id);
-  
-  return queryTokens.every(token => 
+
+  return queryTokens.every(token =>
     nameNormalized.includes(token) || idNormalized.includes(token)
   );
 };
@@ -45,20 +45,21 @@ const matchProduct = (product: Product, query: string): boolean => {
 const matchCustomer = (customer: any, query: string): boolean => {
   const queryNormalized = normalizeString(query).trim();
   if (!queryNormalized) return false;
-  
+
   const queryTokens = queryNormalized.split(/\s+/);
   const fullNameNormalized = normalizeString(`${customer.first_name || ''} ${customer.last_name || ''}`);
   const rutNormalized = normalizeString(customer.rut || '');
   const contactNormalized = normalizeString(customer.contact || '');
-  
-  return queryTokens.every(token => 
-    fullNameNormalized.includes(token) || 
+
+  return queryTokens.every(token =>
+    fullNameNormalized.includes(token) ||
     rutNormalized.includes(token) ||
     contactNormalized.includes(token)
   );
 };
 
 export function QuotesView({ products }: QuotesViewProps) {
+  const customerSearchRef = useRef<HTMLDivElement>(null);
   const [quotes, setQuotes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [screen, setScreen] = useState<'list' | 'editor'>('list');
@@ -79,7 +80,7 @@ export function QuotesView({ products }: QuotesViewProps) {
   const [condition, setCondition] = useState('Contado - CLP');
   const [validityDays, setValidityDays] = useState('30');
   const [glosa, setGlosa] = useState('');
-  
+
   // POS Cart
   const [cart, setCart] = useState<any[]>([]);
   const [productQuery, setProductQuery] = useState('');
@@ -104,12 +105,27 @@ export function QuotesView({ products }: QuotesViewProps) {
       if (res.ok) {
         setCustomers(await res.json());
       }
-    } catch (e) {}
+    } catch (e) { }
   };
 
   useEffect(() => {
     fetchQuotes();
     fetchCustomers();
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        customerSearchRef.current &&
+        !customerSearchRef.current.contains(event.target as Node)
+      ) {
+        setShowCustomerDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
   }, []);
 
   const openCreator = () => {
@@ -144,7 +160,7 @@ export function QuotesView({ products }: QuotesViewProps) {
         setCondition(quote.condition);
         setValidityDays(quote.validity_days.toString());
         setGlosa(quote.glosa || '');
-        
+
         // Map quote items back to cart
         const mappedCart = quote.items.map((item: any) => {
           const product = products.find(p => p.id === item.product_id) || {
@@ -154,7 +170,7 @@ export function QuotesView({ products }: QuotesViewProps) {
             sale_price: item.sale_price,
             active: 1
           } as Product;
-          
+
           return {
             product,
             quantity: item.quantity,
@@ -452,21 +468,21 @@ export function QuotesView({ products }: QuotesViewProps) {
       // Blue Box for COTIZACIÓN (Centering headers)
       doc.setDrawColor(0, 94, 184);
       doc.setLineWidth(0.6);
-      
+
       const nameLines = doc.splitTextToSize(issuer.company_name.toUpperCase(), 64);
       const boxHeightTop = 23 + (nameLines.length * 3.5);
       doc.rect(130, 10, 70, boxHeightTop);
-      
+
       doc.setFont("helvetica", "bold");
       doc.setFontSize(13);
       doc.setTextColor(0, 94, 184);
       doc.text("COTIZACIÓN", 165, 16, { align: 'center' });
-      
+
       doc.setFontSize(9);
       doc.setTextColor(50, 50, 50);
       doc.text(`Folio Nº ${quote.id}`, 165, 21.5, { align: 'center' });
       doc.text(issuer.company_rut, 165, 26.5, { align: 'center' });
-      
+
       doc.setFontSize(7);
       doc.setFont("helvetica", "bold");
       let currentBoxY = 31.5;
@@ -479,7 +495,7 @@ export function QuotesView({ products }: QuotesViewProps) {
       doc.setDrawColor(0, 94, 184);
       doc.setLineWidth(0.3);
       doc.setFillColor(255, 255, 255);
-      
+
       const hasGlosa = !!quote.glosa;
       const boxHeight = hasGlosa ? 32 : 27.5;
       doc.rect(15, 45, 185, boxHeight);
@@ -501,7 +517,7 @@ export function QuotesView({ products }: QuotesViewProps) {
       doc.setFont("helvetica", "normal");
       const contactVal = quote.client_contact || quote.client_name;
       doc.text(contactVal.substring(0, 45).toUpperCase(), 42, 55);
-      
+
       doc.setFont("helvetica", "bold");
       doc.text("Teléfono:", 17, 59.5);
       doc.setFont("helvetica", "normal");
@@ -615,7 +631,7 @@ export function QuotesView({ products }: QuotesViewProps) {
           doc.setFont("helvetica", "italic");
           doc.setFontSize(6);
           doc.setTextColor(110, 110, 110);
-          const disclaimer = "Se reserva el derecho de cambiar o modificar su lista de precios sin previo aviso, corregir irregularidades u otros generados por sus empleados. En caso de una variación muy alta del dólar, será necesario volver a recalcular los valores cotizados.";
+          const disclaimer = "Se reserva el derecho de cambiar o modificar su lista de precios sin previo aviso, corregir irregularidades u otros generados por sus empleados. En caso de una variación muy alta de los costos o externalidades, será necesario volver a recalcular los valores cotizados.";
           const disclaimerLines = doc.splitTextToSize(disclaimer, 110);
           doc.text(disclaimerLines, 15, currentY);
 
@@ -642,18 +658,18 @@ export function QuotesView({ products }: QuotesViewProps) {
           // Bank Details
           currentY += 20;
           doc.setDrawColor(200, 200, 200);
-          
+
           const bankLines = doc.splitTextToSize(issuer.company_bank_details, 150);
           const bankBoxHeight = Math.max(14, (bankLines.length * 3.5) + 3);
-          
+
           doc.rect(15, currentY, 185, bankBoxHeight);
           doc.setFillColor(245, 245, 245);
           doc.rect(15.1, currentY + 0.1, 23.8, bankBoxHeight - 0.2, 'F');
-          
+
           doc.setFont("helvetica", "bold");
           doc.setFontSize(7);
           doc.setTextColor(0, 0, 0);
-          
+
           const labelOffsetY = (bankBoxHeight / 2) - 1.55;
           doc.text("Datos", 17, currentY + labelOffsetY);
           doc.text("Bancarios:", 17, currentY + labelOffsetY + 3.5);
@@ -756,7 +772,7 @@ export function QuotesView({ products }: QuotesViewProps) {
             </div>
 
             {/* Customer Lookup Autocomplete */}
-            <div className="relative">
+            <div className="relative" ref={customerSearchRef}>
               <label className="text-[9px] font-black uppercase text-gray-400 block mb-1">Buscar Cliente Registrado (Autocomplete)</label>
               <div className="relative">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -919,7 +935,7 @@ export function QuotesView({ products }: QuotesViewProps) {
                 placeholder="BUSCAR O ESCANEAR PRODUCTO..."
                 className="w-full bg-white border border-[var(--line)] py-3 pl-10 pr-4 text-xs font-semibold rounded-xl shadow-sm focus:outline-none focus:ring-2 ring-[var(--primary)]/20 transition-all uppercase"
               />
-              
+
               {productQuery && filteredProducts.length > 0 && (
                 <div className="absolute top-full left-0 w-full bg-white border border-[var(--line)] border-t-0 shadow-2xl z-20 rounded-b-xl overflow-hidden">
                   {filteredProducts.map((p, index) => (
