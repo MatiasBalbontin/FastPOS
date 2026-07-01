@@ -26,6 +26,7 @@ interface SalesViewProps {
   onSale: (items: { product_id: string; quantity: number }[], method: string, customer_id?: string) => Promise<boolean>;
   products: Product[];
   userPermissions: string[];
+  currentUser: string;
   onProductNotFound: (query: string) => void;
 }
 
@@ -376,7 +377,7 @@ function PaymentModal({ total, onClose, onConfirm, canDeferPayment }: PaymentMod
   );
 }
 
-export function SalesView({ searchInputRef, onSale, products, userPermissions, onProductNotFound }: SalesViewProps) {
+export function SalesView({ searchInputRef, onSale, products, userPermissions, currentUser, onProductNotFound }: SalesViewProps) {
   const [query, setQuery] = useState('');
   const [cart, setCart] = useState<{ product: Product; quantity: number }[]>([]);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -740,6 +741,13 @@ export function SalesView({ searchInputRef, onSale, products, userPermissions, o
           </div>
           
           <div className="flex items-center gap-3">
+            {/* Operator User Badge */}
+            <div className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-xl border border-[var(--line)] shadow-sm">
+              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+              <div className="text-xs font-black uppercase text-gray-400">Operador:</div>
+              <div className="text-sm font-bold text-slate-700 uppercase tracking-wide">{currentUser}</div>
+            </div>
+
             {/* Live Clock Timer */}
             <div className="flex items-center gap-2.5 bg-white px-4 py-2.5 rounded-xl border border-[var(--line)] shadow-sm">
               <Clock size={16} className="text-gray-400 animate-spin" style={{ animationDuration: '8s' }} />

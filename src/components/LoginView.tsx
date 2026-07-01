@@ -3,7 +3,7 @@ import { Lock, User, ShoppingCart } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface LoginViewProps {
-  onLoginSuccess: (permissions: string[]) => void;
+  onLoginSuccess: (permissions: string[], username: string) => void;
 }
 
 export function LoginView({ onLoginSuccess }: LoginViewProps) {
@@ -32,7 +32,7 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
       const data = await res.json();
       if (res.ok) {
         toast.success('Sesión iniciada con éxito');
-        onLoginSuccess(data.permissions || []);
+        onLoginSuccess(data.permissions || [], data.username || username.trim().toLowerCase());
       } else {
         toast.error(data.error || 'Usuario o contraseña incorrectos');
       }

@@ -57,6 +57,7 @@ const SidebarItem = ({ icon: Icon, label, active, onClick }: SidebarItemProps) =
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [userPermissions, setUserPermissions] = useState<string[]>([]);
+  const [currentUsername, setCurrentUsername] = useState<string>('');
   const [view, setView] = useState<'sales' | 'inventory' | 'analytics' | 'history' | 'expenses' | 'receivables' | 'fixed_costs' | 'quotes' | 'configuration' | 'entities'>('sales');
   const [products, setProducts] = useState<Product[]>([]);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
@@ -100,13 +101,16 @@ export default function App() {
       if (data && data.authenticated) {
         setIsAuthenticated(true);
         setUserPermissions(data.permissions || []);
+        setCurrentUsername(data.username || '');
       } else {
         setIsAuthenticated(false);
         setUserPermissions([]);
+        setCurrentUsername('');
       }
     } catch {
       setIsAuthenticated(false);
       setUserPermissions([]);
+      setCurrentUsername('');
     }
   };
 
@@ -116,6 +120,7 @@ export default function App() {
       if (res.ok) {
         setIsAuthenticated(false);
         setUserPermissions([]);
+        setCurrentUsername('');
         toast.success('Sesión cerrada correctamente');
       } else {
         toast.error('Error al cerrar sesión');
@@ -216,9 +221,10 @@ export default function App() {
     return (
       <>
         <Toaster position="top-right" theme="light" />
-        <LoginView onLoginSuccess={(permissions) => {
+        <LoginView onLoginSuccess={(permissions, username) => {
           setIsAuthenticated(true);
           setUserPermissions(permissions);
+          setCurrentUsername(username);
         }} />
       </>
     );
@@ -351,6 +357,7 @@ export default function App() {
             onSale={handleSale}
             products={products}
             userPermissions={userPermissions}
+            currentUser={currentUsername}
             onProductNotFound={(id: string) => {
               setScannedId(id.trim());
               setIsExpressModalOpen(true);
