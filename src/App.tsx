@@ -31,6 +31,7 @@ import { QuotesView } from './components/QuotesView';
 import { ConfigurationView } from './components/ConfigurationView';
 import { EntitiesView } from './components/EntitiesView';
 import { ExpressModal } from './components/ExpressModal';
+import { ActivationView } from './components/ActivationView';
 
 interface SidebarItemProps {
   icon: React.ComponentType<{ size?: number; className?: string }>;
@@ -55,6 +56,7 @@ const SidebarItem = ({ icon: Icon, label, active, onClick }: SidebarItemProps) =
 );
 
 export default function App() {
+  const [isLicensed, setIsLicensed] = useState<boolean | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [userPermissions, setUserPermissions] = useState<string[]>([]);
   const [currentUsername, setCurrentUsername] = useState<string>('');
@@ -130,7 +132,18 @@ export default function App() {
     }
   };
 
+  const checkLicense = async () => {
+    try {
+      const res = await fetch('/api/license/status');
+      const data = await res.json();
+      setIsLicensed(data.licensed);
+    } catch {
+      setIsLicensed(false);
+    }
+  };
+
   useEffect(() => {
+    checkLicense();
     checkAuth();
   }, []);
 
@@ -208,12 +221,21 @@ export default function App() {
 
   const hasPermission = (permission: string) => userPermissions.includes(permission);
 
-  if (isAuthenticated === null) {
+  if (isLicensed === null || isAuthenticated === null) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-slate-950">
         <Toaster position="top-right" theme="light" />
         <div className="text-sm font-semibold text-slate-400 animate-pulse uppercase tracking-widest">Cargando aplicación...</div>
       </div>
+    );
+  }
+
+  if (isLicensed === false) {
+    return (
+      <>
+        <Toaster position="top-right" theme="light" />
+        <ActivationView onActivationSuccess={() => setIsLicensed(true)} />
+      </>
     );
   }
 

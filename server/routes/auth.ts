@@ -1,8 +1,12 @@
 import express from 'express';
 import { loginLimiter } from '../middleware/rateLimiter';
 import { db } from '../db/index';
-import { hashPassword } from '../middleware/auth';
+import { hashPassword, verifyPassword } from '../middleware/auth';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router = express.Router();
 
 router.post('/login', loginLimiter, (req, res) => {
@@ -11,13 +15,28 @@ router.post('/login', loginLimiter, (req, res) => {
   if (!password) {
     return res.status(400).json({ error: 'La contraseña es requerida' });
   }
-
-  const hashed = hashPassword(password);
   
   try {
     const user = db.prepare('SELECT * FROM users WHERE username = ? AND active = 1').get(username.toLowerCase().trim()) as any;
     
-    if (user && user.password === hashed) {
+    if (user && verifyPassword(password, user.password)) {
+      // Automatic migration: if password hash is SHA-256 (not starting with bcrypt pattern), update to bcrypt
+      const isBcrypt = user.password.startsWith('$2a$') || user.password.startsWith('$2b$') || user.password.startsWith('$2y$');
+      if (!isBcrypt) {
+        const newBcryptHash = hashPassword(password);
+        db.prepare('UPDATE users SET password = ? WHERE id = ?').run(newBcryptHash, user.id);
+      }
+
+      // Delete CONTRASEÑA_INICIAL.txt if it exists
+      try {
+        const passwordFile = path.join(__dirname, '..', '..', 'CONTRASEÑA_INICIAL.txt');
+        if (fs.existsSync(passwordFile)) {
+          fs.unlinkSync(passwordFile);
+        }
+      } catch (e) {
+        console.error("Error al eliminar CONTRASEÑA_INICIAL.txt:", e);
+      }
+
       req.session.isAuthenticated = true;
       req.session.userId = user.id;
       req.session.username = user.username;

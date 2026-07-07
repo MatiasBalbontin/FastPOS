@@ -1,6 +1,7 @@
 import express from 'express';
 import { db } from '../db/index';
 import { AppError } from '../middleware/errorHandler';
+import { QuoteSchema, validateBody } from '../middleware/validation';
 
 const router = express.Router();
 
@@ -40,7 +41,7 @@ router.get('/:id', (req, res, next) => {
 });
 
 // Create Quote
-router.post('/', (req, res, next) => {
+router.post('/', validateBody(QuoteSchema), (req, res, next) => {
   const {
     customer_id,
     client_name,
@@ -55,12 +56,6 @@ router.post('/', (req, res, next) => {
   } = req.body;
 
   try {
-    if (!client_name) {
-      throw new AppError('Nombre del cliente es obligatorio', 400);
-    }
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      throw new AppError('Debe agregar al menos un item a la cotización', 400);
-    }
 
     const transaction = db.transaction(() => {
       const quoteResult = db.prepare(`
@@ -107,7 +102,7 @@ router.post('/', (req, res, next) => {
 });
 
 // Update Quote
-router.put('/:id', (req, res, next) => {
+router.put('/:id', validateBody(QuoteSchema), (req, res, next) => {
   const { id } = req.params;
   const {
     customer_id,
@@ -123,12 +118,6 @@ router.put('/:id', (req, res, next) => {
   } = req.body;
 
   try {
-    if (!client_name) {
-      throw new AppError('Nombre del cliente es obligatorio', 400);
-    }
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      throw new AppError('Debe agregar al menos un item a la cotización', 400);
-    }
 
     const transaction = db.transaction(() => {
       db.prepare(`

@@ -1,5 +1,6 @@
 import express from 'express';
 import crypto from 'crypto';
+import bcrypt from 'bcryptjs';
 
 declare module 'express-session' {
   interface SessionData {
@@ -11,7 +12,16 @@ declare module 'express-session' {
 }
 
 export function hashPassword(password: string): string {
-  return crypto.createHash('sha256').update(password).digest('hex');
+  return bcrypt.hashSync(password, 10);
+}
+
+export function verifyPassword(password: string, storedHash: string): boolean {
+  if (storedHash.startsWith('$2a$') || storedHash.startsWith('$2b$') || storedHash.startsWith('$2y$')) {
+    return bcrypt.compareSync(password, storedHash);
+  }
+  // Fallback to SHA-256 comparison for legacy passwords
+  const sha256Hash = crypto.createHash('sha256').update(password).digest('hex');
+  return sha256Hash === storedHash;
 }
 
 export const requireAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {

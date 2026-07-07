@@ -19,7 +19,6 @@ if %ERRORLEVEL% NEQ 0 (
         rmdir /s /q ".node\node-v20.11.1-win-x64"
         del ".node\node.zip"
     )
-    :: Agregando el node local al PATH de esta sesión de CMD temporalmente
     set "PATH=%~dp0.node;%PATH%"
 )
 
@@ -31,14 +30,26 @@ if not exist "node_modules\" (
     echo Dependencias locales encontradas. Listo para uso sin internet.
 )
 
+if not exist "dist\" (
+    echo.
+    echo [1.5/3] Compilando archivos de produccion...
+    call npm run build
+)
+
 echo Limpiando puertos en uso para inicio limpio...
 call npx -y kill-port 3000 >nul 2>&1
 
 echo [2/3] Abriendo el navegador...
-:: Esperar 3 segundos para que el servidor alcance a iniciar y abrir el local
 start http://localhost:3000
 
 echo [3/3] Arrancando el sistema servidor...
 echo IMPORTANTE: No cierres esta ventana mientras uses el sistema.
 echo.
-call npm run dev
+
+:: Restart loop — si el servidor termina (ej. por actualizacion automatica), se reinicia solo.
+:loop
+call npm run start
+echo.
+echo [!] El servidor se detuvo. Reiniciando automaticamente en 3 segundos...
+timeout /t 3 /nobreak >nul
+goto :loop

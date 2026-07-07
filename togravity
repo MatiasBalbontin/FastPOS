@@ -1,0 +1,232 @@
+# TOGRAVITY — Prompt de Profesionalización FastPOS
+
+Eres un ingeniero de software senior encargado de profesionalizar **FastPOS v1.2**, un sistema POS (Punto de Venta) construido con Express/TypeScript en el backend y React 19 en el frontend, con SQLite como base de datos local. El objetivo es llevarlo desde su estado actual (uso personal, un solo operador de confianza) hasta un producto **comercializable, seguro y mantenible**.
+
+El repositorio está en la carpeta de trabajo actual. Los archivos principales son:
+- `server.ts` — backend completo (1.269 líneas, Express + SQLite)
+- `src/App.tsx` — frontend completo (3.741 líneas, React 19)
+- `tests/sales.test.ts` — único archivo de tests existente
+
+Ejecutá las siguientes tareas **en orden estricto de prioridad**. Cada tarea debe quedar completamente resuelta antes de pasar a la siguiente. No introduzcas dependencias externas que no estén listadas aquí sin preguntar primero.
+
+---
+
+## BLOQUE 1 — CRÍTICO: Seguridad y Corrección de Bugs (hacer primero, sin excepción)
+
+### Tarea 1.1 — Eliminar datos sensibles del código fuente
+- Mover a un archivo `.env` todos los valores hardcodeados: nombre de empresa, RUT, dirección, teléfono, email y número de cuenta bancaria.
+- Llamar a `dotenv.config()` al inicio de `server.ts` (ya está importado pero nunca se inicializa).
+- Agregar `.env` al `.gitignore`.
+- Crear un `.env.example` con las mismas keys pero sin valores reales, para que otros desarrolladores sepan qué configurar.
+- Verificar el historial de git: si los datos sensibles ya fueron commiteados, documentar que el historial debe purgarse con `git filter-repo` antes de hacer el repositorio público.
+
+### Tarea 1.2 — Implementar autenticación local
+- Agregar un endpoint `POST /api/auth/login` que reciba una contraseña configurada en `.env` (`ADMIN_PASSWORD`).
+- Usar `express-session` con una `SESSION_SECRET` también en `.env`. Configurar `httpOnly: true`, `sameSite: 'strict'`, `secure: false` (la app es local/HTTP).
+- Crear un middleware `requireAuth` que devuelva `401` si la sesión no está autenticada.
+- Aplicar `requireAuth` a todos los endpoints de la API excepto `GET /api/health` y `POST /api/auth/login`.
+- En el frontend (`src/App.tsx`), agregar una pantalla de login que aparezca si el servidor devuelve `401`. Al autenticarse, guardar el estado de sesión en React y redirigir a la vista principal.
+- No implementar gestión de múltiples usuarios ni roles en esta etapa; un único operador autenticado es suficiente.
+
+### Tarea 1.3 — Corregir el bug de stock negativo en ventas FIFO
+- En `server.ts`, antes de procesar cualquier venta (endpoint `POST /api/sales` y `POST /api/sales/bulk`), calcular el stock total disponible del producto sumando todos sus lotes con cantidad > 0.
+- Si la cantidad solicitada supera el stock disponible, rechazar la operación con `res.status(400).json({ error: 'Stock insuficiente', available: stockActual, requested: cantidadSolicitada })`.
+- Eliminar el bloque que inserta lotes con cantidad negativa (actualmente en las líneas ~395–401 y ~433–460).
+- Actualizar el test existente en `tests/sales.test.ts` que actualmente espera stock negativo de `-5` como comportamiento correcto: cambiar esa aserción para verificar que la venta es rechazada con error.
+
+### Tarea 1.4 — Habilitar Foreign Keys en SQLite
+- Agregar `db.pragma('foreign_keys = ON')` inmediatamente después de crear la instancia de base de datos en `server.ts`, antes de cualquier operación de schema o migración.
+- Verificar que no haya datos huérfanos existentes en `inventory.db` que violarían las constraints al activarlas (ejecutar queries de validación antes).
+
+### Tarea 1.5 — Agregar índices de base de datos
+- Agregar las siguientes instrucciones al schema de inicialización de la base de datos en `server.ts`, usando `CREATE INDEX IF NOT EXISTS`:
+  ```sql
+  CREATE INDEX IF NOT EXISTS idx_sales_created_at ON sales(created_at);
+  CREATE INDEX IF NOT EXISTS idx_sales_ticket_id ON sales(ticket_id);
+  CREATE INDEX IF NOT EXISTS idx_sales_product_id ON sales(product_id);
+  CREATE INDEX IF NOT EXISTS idx_batches_product_id ON batches(product_id);
+  CREATE INDEX IF NOT EXISTS idx_receivables_customer_id ON receivables(customer_id);
+  ```
+
+---
+
+## BLOQUE 2 — ALTO: Calidad y Robustez
+
+### Tarea 2.1 — Validación de entradas en todos los endpoints
+- Instalar `zod` como dependencia de producción.
+- Definir un schema Zod para cada body de request en `server.ts`. Como mínimo:
+  - `POST /api/products`: `name` (string no vacío), `sale_price` (number > 0), `category` (string), `unit` (string)
+  - `POST /api/sales`: `product_id` (number entero > 0), `quantity` (number > 0), `payment_method` (enum: 'cash' | 'card' | 'receivable')
+  - `POST /api/sales/bulk`: array de ítems con el mismo schema anterior
+  - `POST /api/entities`: `rut` (string con formato RUT chileno válido), `name` (string no vacío), `type` (enum: 'cliente' | 'proveedor')
+  - `POST /api/expenses`: `amount` (number > 0), `description` (string no vacío), `payment_method` (enum)
+  - `PUT /api/products/:id/stock`: `new_stock` (number entero >= 0)
+- Crear un helper `validateBody(schema)` que devuelva middleware Express para reutilizar la validación.
+- Devolver `res.status(400).json({ error: 'Datos inválidos', details: zodError.issues })` cuando la validación falle.
+
+### Tarea 2.2 — Rate limiting
+- Instalar `express-rate-limit`.
+- Configurar un limitador general de 200 requests/minuto por IP para todos los endpoints.
+- Configurar un limitador más estricto de 10 requests/minuto específicamente para `POST /api/auth/login`.
+- Aplicar ambos limitadores como middleware en `server.ts`.
+
+### Tarea 2.3 — Manejo centralizado de errores
+- Crear un middleware de error Express al final de `server.ts` con la firma `(err, req, res, next)`.
+- Definir una clase `AppError extends Error` con campos `statusCode` y `isOperational`.
+- Reemplazar los strings de detección de tipo de error (`error.message.includes('UNIQUE constraint failed')`) por instancias de `AppError` lanzadas con el código HTTP apropiado.
+- En producción (`NODE_ENV=production`), el middleware de error no debe exponer mensajes de error internos al cliente; solo `statusCode` y un mensaje genérico.
+
+### Tarea 2.4 — Corregir aritmética monetaria
+- Reemplazar el uso de `float` para cálculos de costo y precio en `server.ts` por operaciones con enteros en centavos: multiplicar todos los valores por 100 al leer de la base de datos, operar en enteros, y dividir por 100 al escribir.
+- Alternativamente, instalar `decimal.js` y reemplazar las operaciones `totalCost += qty * batch.cost` por operaciones `Decimal`.
+- Asegurarse de que la columna de precios en la base de datos almacene valores coherentes (si se cambia la unidad a centavos, agregar una migración que multiplique los valores existentes × 100).
+
+### Tarea 2.5 — Eliminar dependencias no utilizadas
+- Ejecutar `npm uninstall @google/genai`.
+- Remover de `vite.config.ts` la línea que expone `GEMINI_API_KEY` como variable de entorno de cliente.
+- Si `dotenv` ya está siendo usado correctamente tras la Tarea 1.1, mantenerlo; si no, eliminarlo también.
+- Ejecutar `npm audit` y resolver vulnerabilidades de severidad alta o crítica.
+
+---
+
+## BLOQUE 3 — MEDIO: Arquitectura y Mantenibilidad
+
+### Tarea 3.1 — Separar server.ts en módulos por dominio
+Reorganizar el backend en la siguiente estructura de carpetas, sin cambiar la lógica de negocio:
+
+```
+server/
+  db/
+    index.ts          ← inicialización de la conexión SQLite
+    schema.ts         ← CREATE TABLE statements
+    migrations.ts     ← lógica de ALTER TABLE por versión
+  routes/
+    auth.ts           ← POST /api/auth/login, POST /api/auth/logout
+    products.ts       ← CRUD de productos
+    sales.ts          ← ventas individuales y bulk
+    inventory.ts      ← ajuste de stock, batches, importación Excel
+    analytics.ts      ← endpoints de métricas y reportes
+    expenses.ts       ← gastos
+    fixedCosts.ts     ← costos fijos
+    receivables.ts    ← cuentas corrientes
+    entities.ts       ← clientes y proveedores
+    quotes.ts         ← cotizaciones
+    settings.ts       ← configuración de empresa
+  middleware/
+    auth.ts           ← middleware requireAuth
+    errorHandler.ts   ← middleware de errores centralizado
+    rateLimiter.ts    ← configuración de rate limiters
+  server.ts           ← punto de entrada, monta los routers
+```
+
+Cada archivo de ruta debe exportar un `express.Router()`. El `server.ts` raíz solo importa, monta rutas y arranca el servidor.
+
+### Tarea 3.2 — Separar App.tsx en componentes individuales
+Reorganizar el frontend en la siguiente estructura, sin cambiar el comportamiento visible:
+
+```
+src/
+  components/
+    SalesView.tsx
+    PaymentModal.tsx
+    InventoryView.tsx
+    AnalyticsView.tsx
+    StatCard.tsx
+    EditProductModal.tsx
+    ImportModal.tsx
+    ExpressModal.tsx
+    HistoryView.tsx
+    ExpensesView.tsx
+    ReceivablesView.tsx
+    FixedCostsView.tsx
+    EntitiesView.tsx
+    ConfigurationView.tsx
+    QuotesView.tsx
+    LoginView.tsx       ← nuevo, creado en Tarea 1.2
+  hooks/
+    useProducts.ts      ← lógica de fetch y estado de productos
+    useSales.ts         ← lógica de ventas
+    useAnalytics.ts     ← lógica de métricas
+  services/
+    api.ts              ← todas las funciones fetch tipadas
+  types/
+    index.ts            ← interfaces Product, Sale, Batch, Customer, etc.
+  App.tsx               ← solo navegación entre vistas, estado global mínimo
+```
+
+Las funciones `fetch` actualmente incrustadas en los componentes deben moverse a `src/services/api.ts` como funciones nombradas con tipos de retorno explícitos.
+
+### Tarea 3.3 — Tipar correctamente los props de React
+- En `src/types/index.ts`, definir interfaces TypeScript para todas las entidades del dominio: `Product`, `Batch`, `Sale`, `SaleItem`, `Customer`, `Supplier`, `Expense`, `FixedCost`, `Receivable`, `Quote`, `CompanySettings`.
+- Reemplazar todos los `: any` en las firmas de componentes por las interfaces correspondientes.
+- Habilitar `"strict": true` en `tsconfig.json` y corregir todos los errores que aparezcan.
+- El objetivo es que `npx tsc --noEmit` pase sin errores.
+
+---
+
+## BLOQUE 4 — TESTS Y DOCUMENTACIÓN
+
+### Tarea 4.1 — Ampliar la suite de tests
+Usando Vitest (ya instalado), escribir tests para:
+
+**Backend (integración):**
+- `POST /api/sales`: venta exitosa con stock suficiente → verifica respuesta 200 y deducción de lote.
+- `POST /api/sales`: venta fallida con stock insuficiente → verifica respuesta 400.
+- `POST /api/sales`: venta sin autenticación → verifica respuesta 401.
+- `POST /api/products`: validación de campos requeridos → verifica respuesta 400 con detalles.
+- `POST /api/auth/login`: contraseña correcta → sesión activa.
+- `POST /api/auth/login`: contraseña incorrecta → respuesta 401.
+
+**Frontend (unitario, usando React Testing Library):**
+- `LoginView`: renderiza el formulario y muestra error si el login falla.
+- `SalesView`: buscar un producto existente lo agrega al carrito.
+- `PaymentModal`: muestra el total y llama a `onConfirm` con los datos correctos.
+
+Objetivo de cobertura: **60% de líneas** en el backend, **40% en el frontend**.
+
+### Tarea 4.2 — Documentar la API con OpenAPI/Swagger
+- Instalar `swagger-ui-express` y `swagger-jsdoc`.
+- Agregar anotaciones JSDoc con el formato OpenAPI 3.0 a cada endpoint en los archivos de rutas.
+- Montar la UI de Swagger en `GET /api/docs` (solo en `NODE_ENV !== 'production'`).
+- Documentar como mínimo: método HTTP, ruta, descripción, parámetros requeridos, cuerpos de request con schemas, y respuestas posibles (200, 400, 401, 500).
+
+### Tarea 4.3 — Actualizar README.md
+Reescribir el README con las siguientes secciones:
+- Descripción del producto (qué hace FastPOS, para quién es)
+- Requisitos de sistema (Node.js version, OS compatibles)
+- Instalación paso a paso
+- Configuración del archivo `.env` (con referencia al `.env.example`)
+- Cómo ejecutar en modo desarrollo
+- Cómo compilar y ejecutar en modo producción
+- Estructura de carpetas del proyecto
+- Referencia a la documentación de API en `/api/docs`
+- Cómo ejecutar los tests
+
+---
+
+## RESTRICCIONES GENERALES
+
+- No cambiar el motor de base de datos (quedarse con SQLite + better-sqlite3).
+- No cambiar el framework de frontend (quedarse con React 19 + Vite).
+- No agregar ORM (Prisma, TypeORM, etc.); mantener queries SQL directas con better-sqlite3.
+- No agregar state management externo (Redux, Zustand, etc.) en esta etapa.
+- No cambiar la interfaz de usuario visible al usuario final; este es un refactor interno.
+- Cada tarea debe poder commitearse de forma independiente con un mensaje descriptivo.
+- Al finalizar cada bloque, ejecutar `npx tsc --noEmit` y `npm test` y verificar que todo pase.
+
+---
+
+## CRITERIO DE ÉXITO
+
+El trabajo está terminado cuando se cumplan **todos** los siguientes puntos:
+
+- [ ] `npm test` pasa con cobertura >= 60% en backend y >= 40% en frontend
+- [ ] `npx tsc --noEmit` pasa sin errores con `strict: true`
+- [ ] `npm audit` no reporta vulnerabilidades de severidad alta o crítica
+- [ ] Ningún dato sensible (RUT, cuenta bancaria, email real) aparece en el código fuente ni en el historial de git reciente
+- [ ] Todos los endpoints devuelven 401 si no hay sesión activa
+- [ ] Una venta que supera el stock disponible devuelve 400, nunca crea lotes negativos
+- [ ] `inventory.db` está en `.gitignore`
+- [ ] La estructura de carpetas coincide con los diagramas de las Tareas 3.1 y 3.2
+- [ ] El README tiene todas las secciones de la Tarea 4.3
+- [ ] `/api/docs` devuelve la UI de Swagger en modo desarrollo

@@ -1,5 +1,6 @@
 import express from 'express';
 import { db } from '../db/index';
+import { FixedCostSchema, validateBody } from '../middleware/validation';
 
 const router = express.Router();
 
@@ -14,12 +15,9 @@ router.get('/', (req, res, next) => {
 });
 
 // Add Fixed Cost
-router.post('/', (req, res, next) => {
+router.post('/', validateBody(FixedCostSchema), (req, res, next) => {
   const { description, amount } = req.body;
   try {
-    if (!description || !amount) {
-      throw new Error('Todos los campos son requeridos');
-    }
     db.prepare(`
       INSERT INTO fixed_costs (description, amount)
       VALUES (?, ?)

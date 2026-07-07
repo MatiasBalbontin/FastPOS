@@ -158,25 +158,46 @@ export function ConfigurationView() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ force })
       });
-      const data = await res.json();
+
+      // Parse JSON only after confirming the response is JSON-shaped
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error(`Error del servidor (HTTP ${res.status}). Respuesta no es JSON válido.`);
+      }
+
       if (data.logs) {
         setUpdateLogs(data.logs);
       }
+
       if (res.ok && data.success) {
-        toast.success("Actualización completada con éxito. Recargando la aplicación...");
-        setTimeout(() => {
+        toast.success("Actualización completada. El servidor se reiniciará automáticamente...");
+        // Poll until the server comes back up, then reload
+        const pollForRestart = async () => {
+          for (let i = 0; i < 25; i++) {
+            await new Promise(r => setTimeout(r, 2000));
+            try {
+              const ping = await fetch('/api/license/status');
+              if (ping.ok) {
+                window.location.reload();
+                return;
+              }
+            } catch { /* server still restarting */ }
+          }
+          // Fallback after ~50 s
           window.location.reload();
-        }, 3000);
+        };
+        pollForRestart();
       } else {
         toast.error(data.error || "Error durante la actualización.");
       }
-    } catch {
-      toast.error("Error de conexión con el servidor.");
-      setUpdateLogs(prev => [...prev, "Error: Error de red o tiempo de espera agotado. El servidor puede estar reiniciándose..."]);
+    } catch (err: any) {
+      toast.error(err?.message || "Error de conexión con el servidor.");
+      setUpdateLogs(prev => [...prev, `Error: ${err?.message || "Error de red o tiempo de espera agotado."}`]);
     } finally {
       setUpdatingSystem(false);
       setShowConfirmForceUpdate(false);
-      fetchSystemStatus();
     }
   };
 

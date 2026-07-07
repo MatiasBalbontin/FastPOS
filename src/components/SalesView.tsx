@@ -17,7 +17,7 @@ import {
   CheckCircle,
   FileText
 } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn, parseUTCDate } from '../lib/utils';
 import { toast } from 'sonner';
 import { Product } from './Types';
 
@@ -415,17 +415,6 @@ export function SalesView({ searchInputRef, onSale, products, userPermissions, c
     checkShiftStatus();
   }, []);
 
-  // Helper to parse SQLite UTC date strings safely across browsers/timezones
-  const parseUTCDate = (dateStr: string) => {
-    if (!dateStr) return new Date();
-    if (dateStr.endsWith('Z') || dateStr.includes('T')) {
-      return new Date(dateStr);
-    }
-    // Convert "YYYY-MM-DD HH:MM:SS" to "YYYY-MM-DDTHH:MM:SSZ"
-    const formatted = dateStr.replace(' ', 'T') + 'Z';
-    return new Date(formatted);
-  };
-
   // Update timer in real time
   useEffect(() => {
     if (!activeShift?.shift?.opening_time) return;
@@ -439,7 +428,7 @@ export function SalesView({ searchInputRef, onSale, products, userPermissions, c
       setElapsedText(`${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`);
     };
     updateTimer();
-    const interval = setInterval(updateTimer, 1000);
+    const interval = setInterval(updateTimer, 60000);
     return () => clearInterval(interval);
   }, [activeShift]);
 

@@ -75,6 +75,32 @@ export const ShiftCloseSchema = z.object({
   closing_amount_card: z.coerce.number().nonnegative()
 });
 
+export const FixedCostSchema = z.object({
+  description: z.string().min(1),
+  amount: z.coerce.number().gt(0)
+});
+
+export const QuoteItemSchema = z.object({
+  product_id: z.union([z.string(), z.number()]).optional().nullable(),
+  name: z.string().min(1),
+  quantity: z.coerce.number().gt(0),
+  unit: z.string().optional().default('UNID'),
+  sale_price: z.coerce.number().nonnegative()
+});
+
+export const QuoteSchema = z.object({
+  customer_id: z.union([z.string(), z.number()]).optional().nullable(),
+  client_name: z.string().min(1),
+  client_rut: z.string().optional().nullable(),
+  client_contact: z.string().optional().nullable(),
+  client_phone: z.string().optional().nullable(),
+  client_email: z.string().optional().nullable(),
+  condition: z.string().optional().default('Contado - CLP'),
+  validity_days: z.coerce.number().int().gt(0).optional().default(30),
+  glosa: z.string().optional().nullable(),
+  items: z.array(QuoteItemSchema).min(1)
+});
+
 export const validateBody = (schema: z.ZodSchema) => {
   return (req: express.Request, res: express.Response, next: express.NextFunction) => {
     try {

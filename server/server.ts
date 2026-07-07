@@ -1,10 +1,58 @@
 import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import crypto from 'crypto';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const envPath = path.join(__dirname, '..', '.env');
+
+if (!fs.existsSync(envPath)) {
+  const sessionSecret = crypto.randomBytes(32).toString('hex');
+  const randomAdminPassword = crypto.randomBytes(6).toString('hex');
+  
+  const envContent = `SESSION_SECRET=${sessionSecret}
+ADMIN_PASSWORD=${randomAdminPassword}
+NODE_ENV=production
+`;
+  fs.writeFileSync(envPath, envContent, 'utf-8');
+
+  const passwordFile = path.join(__dirname, '..', 'CONTRASEÑA_INICIAL.txt');
+  const passwordContent = `==================================================
+           CONTRASEÑA INICIAL DE ADMINISTRADOR
+==================================================
+
+USUARIO: admin
+CONTRASEÑA: ${randomAdminPassword}
+
+POR FAVOR ANOTE ESTA CONTRASEÑA EN UN LUGAR SEGURO.
+ESTE ARCHIVO SE BORRARÁ AUTOMÁTICAMENTE CUANDO LOGRES
+INICIAR SESIÓN O PUEDES ELIMINARLO MANUALMENTE.
+==================================================
+`;
+  fs.writeFileSync(passwordFile, passwordContent, 'utf-8');
+
+  console.log("==================================================");
+  console.log("             PRIMER ARRANQUE DETECTADO            ");
+  console.log("==================================================");
+  console.log(`Se ha generado una nueva contraseña de administrador:`);
+  console.log(`USUARIO: admin`);
+  console.log(`CONTRASEÑA: ${randomAdminPassword}`);
+  console.log("--------------------------------------------------");
+  console.log("POR FAVOR ANOTE ESTA CONTRASEÑA EN UN LUGAR SEGURO.");
+  console.log(`Se ha guardado una copia en: ${passwordFile}`);
+  console.log("==================================================");
+}
+
 dotenv.config();
+
+if (!process.env.SESSION_SECRET) {
+  console.error("ERROR CRÍTICO: SESSION_SECRET no está configurado en el archivo .env.");
+  process.exit(1);
+}
 
 import express from 'express';
 import session from 'express-session';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 
 // Type extensions for express-session
@@ -39,7 +87,11 @@ import { requireAuth, hashPassword } from './middleware/auth';
 // Users seeding
 const checkUsers = db.prepare("SELECT COUNT(*) as count FROM users").get() as { count: number };
 if (checkUsers.count === 0) {
-  const adminPassword = process.env.ADMIN_PASSWORD || 'admin';
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (!adminPassword) {
+    console.error("ERROR CRÍTICO: ADMIN_PASSWORD no está configurado en el archivo .env.");
+    process.exit(1);
+  }
   const hashed = hashPassword(adminPassword);
   db.prepare("INSERT INTO users (username, password, permissions) VALUES (?, ?, ?)")
     .run('admin', hashed, '["sales","inventory","analytics","history","receivables","entities","expenses","fixed_costs","quotes","configuration"]');
@@ -61,12 +113,13 @@ import usersRouter from './routes/users';
 import historyRouter from './routes/history';
 import cashShiftsRouter from './routes/cashShifts';
 import systemRouter from './routes/system';
+import licensingRouter from './routes/licensing';
 
 import { errorHandler } from './middleware/errorHandler';
 import { generalLimiter } from './middleware/rateLimiter';
 import { setupSwagger } from './swagger';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// __dirname is already declared at the top of the file
 
 async function startServer() {
   const app = express();
@@ -74,7 +127,7 @@ async function startServer() {
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
   app.use(session({
-    secret: process.env.SESSION_SECRET || 'fallback-secret-key-12345',
+    secret: process.env.SESSION_SECRET!,
     resave: false,
     saveUninitialized: false,
     cookie: {
@@ -95,8 +148,8 @@ async function startServer() {
     res.json({ status: 'ok' });
   });
 
-  // Mount Authentication (unprotected)
   app.use('/api/auth', authRouter);
+  app.use('/api/license', licensingRouter);
 
   // Protected route middleware interceptor
   app.use('/api', requireAuth);

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Banknote, 
-  CreditCard, 
-  FileMinus, 
-  Receipt, 
+import { parseUTCDate } from '../lib/utils';
+import {
+  Banknote,
+  CreditCard,
+  FileMinus,
+  Receipt,
   TrendingUp,
   Clock,
   AlertTriangle,
@@ -101,17 +102,6 @@ export function AnalyticsView({ analytics, startDate, setStartDate, endDate, set
   const currentCost = analytics.summary.collected_cost || 0;
   const currentProfit = currentRevenue - currentCost;
   const margin = currentRevenue > 0 ? (currentProfit / currentRevenue) * 100 : 0;
-
-  // Helper to parse SQLite UTC date strings safely across browsers/timezones
-  const parseUTCDate = (dateStr: string) => {
-    if (!dateStr) return new Date();
-    if (dateStr.endsWith('Z') || dateStr.includes('T')) {
-      return new Date(dateStr);
-    }
-    // Convert "YYYY-MM-DD HH:MM:SS" to "YYYY-MM-DDTHH:MM:SSZ"
-    const formatted = dateStr.replace(' ', 'T') + 'Z';
-    return new Date(formatted);
-  };
 
   // Helper to format shift duration
   const getDurationText = (opening: string, closing: string | null) => {
