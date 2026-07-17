@@ -45,9 +45,11 @@ Source: "public\*"; DestDir: "{app}\public"; Flags: ignoreversion recursesubdirs
 ; cd FastPOS && npm install --production
 Source: "node_modules\*"; DestDir: "{app}\node_modules"; Flags: ignoreversion recursesubdirs createallsubdirs
 
-; Node.js portable — necesario porque el cliente no tiene Node instalado.
-; Debe existir FastPOS\.node\ con un Node.js portable (node.exe + npm) antes de compilar.
-Source: ".node\*"; DestDir: "{app}\.node"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: HasLocalNode
+; Node.js portable — opcional. Si existe FastPOS\.node\ al compilar, se empaqueta y el cliente
+; no necesita internet para obtenerlo. Si no existe (como hoy), se omite sin error gracias a
+; "skipifsourcedoesntexist": IniciarFastPOS.bat igual funciona, descargando Node.js portable
+; automáticamente la primera vez que el cliente lo ejecute (requiere internet solo esa vez).
+Source: ".node\*"; DestDir: "{app}\.node"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist; Check: HasLocalNode
 
 [Icons]
 Name: "{group}\FastPOS"; Filename: "{app}\LanzadorOculto.vbs"; IconFilename: "{app}\fastpos.ico"
