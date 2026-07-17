@@ -307,4 +307,74 @@ router.post('/login', async (req, res) => {
 });
 
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ENDPOINT: POST /api/license/forgot-password
+// Reenvía al servidor de licencias — pide un código de 6 dígitos por email.
+// Body esperado: { email: string }
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/forgot-password', async (req, res) => {
+  const { email } = req.body;
+  if (!email) {
+    return res.status(400).json({ error: 'El correo es requerido.' });
+  }
+
+  const serverUrl = process.env.LICENSE_SERVER_URL;
+  if (!serverUrl) {
+    return res.status(500).json({ error: 'El servidor de licencias no está configurado. Contacta soporte.' });
+  }
+
+  try {
+    const response = await fetch(`${serverUrl}/api/company/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.trim().toLowerCase() }),
+      signal: AbortSignal.timeout(15000)
+    });
+    const resultado = await response.json() as any;
+    res.status(response.status).json(resultado);
+  } catch (err: any) {
+    if (err.name === 'TimeoutError' || err.code === 'ECONNREFUSED') {
+      return res.status(503).json({ error: 'No se pudo conectar al servidor. Verifica tu conexión a internet.' });
+    }
+    console.error('[LICENSE] Error al pedir código de recuperación:', err);
+    res.status(500).json({ error: 'Error inesperado.' });
+  }
+});
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENDPOINT: POST /api/license/reset-password
+// Reenvía al servidor de licencias — canjea el código por una contraseña nueva.
+// Body esperado: { email: string, code: string, newPassword: string }
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/reset-password', async (req, res) => {
+  const { email, code, newPassword } = req.body;
+  if (!email || !code || !newPassword) {
+    return res.status(400).json({ error: 'El correo, el código y la nueva contraseña son requeridos.' });
+  }
+
+  const serverUrl = process.env.LICENSE_SERVER_URL;
+  if (!serverUrl) {
+    return res.status(500).json({ error: 'El servidor de licencias no está configurado. Contacta soporte.' });
+  }
+
+  try {
+    const response = await fetch(`${serverUrl}/api/company/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.trim().toLowerCase(), code, newPassword }),
+      signal: AbortSignal.timeout(15000)
+    });
+    const resultado = await response.json() as any;
+    res.status(response.status).json(resultado);
+  } catch (err: any) {
+    if (err.name === 'TimeoutError' || err.code === 'ECONNREFUSED') {
+      return res.status(503).json({ error: 'No se pudo conectar al servidor. Verifica tu conexión a internet.' });
+    }
+    console.error('[LICENSE] Error al restablecer contraseña:', err);
+    res.status(500).json({ error: 'Error inesperado.' });
+  }
+});
+
+
 export default router;
