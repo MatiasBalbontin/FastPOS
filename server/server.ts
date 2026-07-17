@@ -14,6 +14,8 @@ if (!fs.existsSync(envPath)) {
   const envContent = `SESSION_SECRET=${sessionSecret}
 ADMIN_PASSWORD=${randomAdminPassword}
 NODE_ENV=production
+LICENSE_SERVER_URL=https://fastpos-licencias.vercel.app
+HMAC_SECRET=8e606632c0442f5f4ca40ab18f13459ef578a6caeb36e56c4d42deab3267438d
 `;
   fs.writeFileSync(envPath, envContent, 'utf-8');
 

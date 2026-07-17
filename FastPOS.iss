@@ -30,28 +30,29 @@ Source: "LanzadorOculto.vbs"; DestDir: "{app}"; Flags: ignoreversion
 Source: "fastpos.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "package.json"; DestDir: "{app}"; Flags: ignoreversion
 Source: "package-lock.json"; DestDir: "{app}"; Flags: ignoreversion
-Source: "tsconfig.json"; DestDir: "{app}"; Flags: ignoreversion
-Source: "vite.config.ts"; DestDir: "{app}"; Flags: ignoreversion
 Source: "index.html"; DestDir: "{app}"; Flags: ignoreversion
+; NO se empaqueta .env: server.ts lo autogenera en el primer arranque de cada
+; instalación, con una contraseña de admin y un SESSION_SECRET únicos por cliente.
 
-; Copiar carpetas del sistema
+; Copiar carpetas del sistema (solo lo necesario para correr en producción —
+; NO se incluye src/, tsconfig.json ni vite.config.ts: son fuente de desarrollo,
+; ya compilada dentro de dist/, y no deben viajar al PC del cliente)
 Source: "dist\*"; DestDir: "{app}\dist"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "server\*"; DestDir: "{app}\server"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "src\*"; DestDir: "{app}\src"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "public\*"; DestDir: "{app}\public"; Flags: ignoreversion recursesubdirs createallsubdirs
 
-; Nota: Excluimos node_modules del empaquetado para reducir peso y los instalamos durante el setup,
-; o el instalador puede copiar la versión portable de Node.js si existe en la carpeta .node/
+; node_modules de producción ya instalados antes de compilar (ver Paso 4a):
+; cd FastPOS && npm install --production
+Source: "node_modules\*"; DestDir: "{app}\node_modules"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+; Node.js portable — necesario porque el cliente no tiene Node instalado.
+; Debe existir FastPOS\.node\ con un Node.js portable (node.exe + npm) antes de compilar.
 Source: ".node\*"; DestDir: "{app}\.node"; Flags: ignoreversion recursesubdirs createallsubdirs; Check: HasLocalNode
 
 [Icons]
 Name: "{group}\FastPOS"; Filename: "{app}\LanzadorOculto.vbs"; IconFilename: "{app}\fastpos.ico"
 Name: "{group}\{cm:UninstallProgram,FastPOS}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\FastPOS"; Filename: "{app}\LanzadorOculto.vbs"; IconFilename: "{app}\fastpos.ico"; Tasks: desktopicon
-
-[Run]
-; Ejecutar npm install de forma silenciosa al finalizar para instalar dependencias locales
-Filename: "cmd.exe"; Parameters: "/c npm install --production --no-fund"; WorkingDir: "{app}"; StatusMsg: "Instalando dependencias de Node.js locales (por favor espera)..."; Flags: runhidden
 
 [Code]
 function HasLocalNode: Boolean;

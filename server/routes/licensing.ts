@@ -62,19 +62,16 @@ function obtenerDeviceId(): string {
 }
 
 /**
- * Recalcula la firma HMAC-SHA256 localmente para verificar offline.
- * Debe usar el mismo formato de payload que el servidor de licencias usa
- * en la función firmarActivacion() de servidor-licencias/index.js.
- * Si cambias el formato aquí, cámbialo también en el servidor.
+ * Recalcula la firma HMAC-SHA256 localmente para verificar offline (modelo
+ * legacy por clave de licencia). Debe coincidir con firmarActivacion() en
+ * servidor-licencias/index.js.
  */
-function verificarFirmaLocal(data: {
+function verificarFirmaLocalLegacy(data: {
   licenseKey: string;
   email: string;
   deviceId: string;
   signature: string;
 }): boolean {
-  // HMAC_SECRET debe ser la misma clave que el servidor usa para firmar.
-  // Se lee de FastPOS/.env → variable HMAC_SECRET.
   const secret = process.env.HMAC_SECRET;
   if (!secret) {
     console.error('[LICENSE] HMAC_SECRET no configurado en .env — no se puede verificar offline');
@@ -84,7 +81,35 @@ function verificarFirmaLocal(data: {
   const payload = `${data.licenseKey}:${data.email}:${data.deviceId}:active`;
   const firmaEsperada = crypto.createHmac('sha256', secret).update(payload).digest('hex');
 
-  // timingSafeEqual evita ataques de timing sobre la comparación
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(firmaEsperada, 'hex'),
+      Buffer.from(data.signature, 'hex')
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Recalcula la firma HMAC-SHA256 localmente para verificar offline (modelo
+ * nuevo por cuenta de empresa). Debe coincidir con firmarActivacionEmpresa()
+ * en servidor-licencias/index.js.
+ */
+function verificarFirmaLocalEmpresa(data: {
+  companyId: string | number;
+  deviceId: string;
+  signature: string;
+}): boolean {
+  const secret = process.env.HMAC_SECRET;
+  if (!secret) {
+    console.error('[LICENSE] HMAC_SECRET no configurado en .env — no se puede verificar offline');
+    return false;
+  }
+
+  const payload = `${data.companyId}:${data.deviceId}:active`;
+  const firmaEsperada = crypto.createHmac('sha256', secret).update(payload).digest('hex');
+
   try {
     return crypto.timingSafeEqual(
       Buffer.from(firmaEsperada, 'hex'),
@@ -97,10 +122,11 @@ function verificarFirmaLocal(data: {
 
 /**
  * Lee y valida el archivo .license local.
- * La validación offline se basa solo en la firma HMAC —
- * no requiere conexión a internet.
+ * La validación offline se basa solo en la firma HMAC — no requiere internet.
+ * Soporta dos formatos de certificado: el legacy (licenseKey) y el nuevo
+ * (companyId) — se distingue por qué campos trae el JSON guardado.
  */
-function verificarLicenciaLocal(): { licensed: boolean; email?: string; key?: string; plan?: string } {
+function verificarLicenciaLocal(): { licensed: boolean; email?: string; key?: string; companyId?: string; plan?: string } {
   if (!fs.existsSync(licensePath)) {
     return { licensed: false };
   }
@@ -108,13 +134,29 @@ function verificarLicenciaLocal(): { licensed: boolean; email?: string; key?: st
   try {
     const data = JSON.parse(fs.readFileSync(licensePath, 'utf-8'));
 
-    // Campos mínimos que debe tener un archivo .license válido
-    if (!data.email || !data.licenseKey || !data.deviceId || !data.signature) {
+    if (!data.deviceId || !data.signature) {
       return { licensed: false };
     }
 
-    // Verificar que la firma no fue manipulada
-    const firmaValida = verificarFirmaLocal({
+    // Certificado nuevo: por cuenta de empresa
+    if (data.companyId) {
+      const firmaValida = verificarFirmaLocalEmpresa({
+        companyId: data.companyId,
+        deviceId:  data.deviceId,
+        signature: data.signature
+      });
+      if (!firmaValida) {
+        console.warn('[LICENSE] Firma inválida — el archivo .license fue modificado');
+        return { licensed: false };
+      }
+      return { licensed: true, email: data.email, companyId: data.companyId, plan: data.plan };
+    }
+
+    // Certificado legacy: por clave de licencia
+    if (!data.email || !data.licenseKey) {
+      return { licensed: false };
+    }
+    const firmaValida = verificarFirmaLocalLegacy({
       licenseKey: data.licenseKey,
       email:      data.email,
       deviceId:   data.deviceId,
@@ -201,6 +243,66 @@ router.post('/activate', async (req, res) => {
     }
     console.error('[LICENSE] Error al activar:', err);
     res.status(500).json({ error: 'Error inesperado durante la activación.' });
+  }
+});
+
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENDPOINT: POST /api/license/login
+// Reemplaza a /activate para el modelo de cuentas de empresa (email +
+// contraseña en vez de email + clave). Requiere internet la primera vez;
+// después el certificado local permite abrir sin conexión, igual que hoy.
+// Body esperado: { email: string, password: string }
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/login', async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'El correo y la contraseña son requeridos.' });
+  }
+
+  const serverUrl = process.env.LICENSE_SERVER_URL;
+  if (!serverUrl) {
+    return res.status(500).json({ error: 'El servidor de licencias no está configurado. Contacta soporte.' });
+  }
+
+  const deviceId = obtenerDeviceId();
+
+  try {
+    const response = await fetch(`${serverUrl}/api/company/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email:    email.trim().toLowerCase(),
+        password: password,
+        deviceId: deviceId
+      }),
+      signal: AbortSignal.timeout(15000)
+    });
+
+    const resultado = await response.json() as any;
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: resultado.error || 'Error al iniciar sesión.' });
+    }
+
+    // El plan Offline devuelve un certificado para guardar localmente.
+    // El plan Online (app web, fuera de este instalador) no pasa por acá.
+    if (resultado.mode === 'offline' && resultado.license) {
+      fs.writeFileSync(licensePath, JSON.stringify(resultado.license, null, 2), 'utf-8');
+    }
+
+    res.json({ success: true, message: 'Sesión iniciada correctamente.', plan: resultado.license?.plan });
+
+  } catch (err: any) {
+    if (err.name === 'TimeoutError' || err.code === 'ECONNREFUSED') {
+      return res.status(503).json({
+        error: 'No se pudo conectar al servidor de activación. Verifica tu conexión a internet e inténtalo de nuevo.'
+      });
+    }
+    console.error('[LICENSE] Error al iniciar sesión:', err);
+    res.status(500).json({ error: 'Error inesperado al iniciar sesión.' });
   }
 });
 
