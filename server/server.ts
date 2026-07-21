@@ -43,6 +43,14 @@ if (checkUsers.count === 0) {
   const hashed = hashPassword(adminPassword);
   db.prepare("INSERT INTO users (username, password, permissions) VALUES (?, ?, ?)")
     .run('admin', hashed, '["sales","inventory","analytics","history","receivables","entities","expenses","fixed_costs","quotes","configuration"]');
+
+  if (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD === 'admin') {
+    console.warn('\n[SEGURIDAD] El usuario "admin" se creó con la contraseña por defecto "admin". Cámbiela cuanto antes desde Configuración > Usuarios.\n');
+  }
+}
+
+if (!process.env.SESSION_SECRET) {
+  console.warn('\n[SEGURIDAD] SESSION_SECRET no está definido en .env; se está usando un valor de respaldo inseguro. Defina uno propio y único en .env.\n');
 }
 
 // Routes and middlewares imports
@@ -60,6 +68,7 @@ import settingsRouter from './routes/settings';
 import usersRouter from './routes/users';
 import historyRouter from './routes/history';
 import cashShiftsRouter from './routes/cashShifts';
+import systemRouter from './routes/system';
 
 import { errorHandler } from './middleware/errorHandler';
 import { generalLimiter } from './middleware/rateLimiter';
@@ -114,6 +123,7 @@ async function startServer() {
   app.use('/api/users', usersRouter);
   app.use('/api/history', historyRouter);
   app.use('/api/cash-shifts', cashShiftsRouter);
+  app.use('/api/system', systemRouter);
 
   // Centralized Error Handling Middleware
   app.use(errorHandler);

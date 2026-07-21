@@ -31,14 +31,19 @@ if not exist "node_modules\" (
     echo Dependencias locales encontradas. Listo para uso sin internet.
 )
 
-echo Limpiando puertos en uso para inicio limpio...
-call npx -y kill-port 3000 >nul 2>&1
-
 echo [2/3] Abriendo el navegador...
 :: Esperar 3 segundos para que el servidor alcance a iniciar y abrir el local
 start http://localhost:3000
 
 echo [3/3] Arrancando el sistema servidor...
 echo IMPORTANTE: No cierres esta ventana mientras uses el sistema.
+echo Esta ventana se reinicia sola si el servidor se actualiza o se detiene inesperadamente.
 echo.
+
+:supervisor
+call npx -y kill-port 3000 >nul 2>&1
 call npm run dev
+echo.
+echo [!] El servidor se detuvo. Reiniciando en 2 segundos...
+timeout /t 2 /nobreak >nul
+goto supervisor

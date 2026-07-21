@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Check, Users, UserPlus, Shield, Trash2, Edit2, Key, CheckCircle, XCircle } from 'lucide-react';
+import { Check, Users, UserPlus, Shield, Trash2, Edit2, Key, CheckCircle, XCircle, Terminal, CloudDownload, RefreshCw, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface UserItem {
@@ -9,9 +9,25 @@ interface UserItem {
   active: number;
 }
 
+interface SystemStatus {
+  gitInstalled: boolean;
+  branch: string | null;
+  localChanges: boolean;
+  commitsBehind: number;
+  fetchError: string | null;
+  error?: string;
+}
+
 export function ConfigurationView() {
-  const [activeTab, setActiveTab] = useState<'company' | 'users'>('company');
-  
+  const [activeTab, setActiveTab] = useState<'company' | 'users' | 'system'>('company');
+
+  // --- System Updates State ---
+  const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
+  const [loadingStatus, setLoadingStatus] = useState(false);
+  const [updatingSystem, setUpdatingSystem] = useState(false);
+  const [updateLogs, setUpdateLogs] = useState<string[]>([]);
+  const [showConfirmForceUpdate, setShowConfirmForceUpdate] = useState(false);
+
   // --- Company Config State ---
   const [config, setConfig] = useState({
     company_name: '',
@@ -114,6 +130,71 @@ export function ConfigurationView() {
     }
   };
 
+  // --- System Updates functions ---
+  const fetchSystemStatus = async () => {
+    setLoadingStatus(true);
+    try {
+      const res = await fetch('/api/system/status');
+      if (res.ok) {
+        setSystemStatus(await res.json());
+      } else {
+        toast.error("Error al obtener estado del sistema");
+      }
+    } catch {
+      toast.error("Error de conexión al obtener estado");
+    } finally {
+      setLoadingStatus(false);
+    }
+  };
+
+  // The server process restarts itself after a successful update (see
+  // server/routes/system.ts), so instead of a fixed timeout we poll the
+  // health endpoint until it responds again before reloading the page.
+  const waitForServerAndReload = async () => {
+    const maxAttempts = 40; // ~40s
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await new Promise(r => setTimeout(r, 1000));
+      try {
+        const res = await fetch('/api/health');
+        if (res.ok) {
+          window.location.reload();
+          return;
+        }
+      } catch {
+        // Server is still restarting; keep polling.
+      }
+    }
+    toast.error("El servidor está tardando más de lo esperado en reiniciar. Recargue la página manualmente en unos segundos.");
+  };
+
+  const handleUpdate = async (force: boolean) => {
+    setUpdatingSystem(true);
+    setUpdateLogs(["Iniciando proceso de actualización...", "Por favor espere, esto puede tardar unos minutos..."]);
+    try {
+      const res = await fetch('/api/system/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force })
+      });
+      const data = await res.json();
+      if (data.logs) {
+        setUpdateLogs(data.logs);
+      }
+      if (res.ok && data.success) {
+        toast.success("Actualización completada. Reiniciando el servidor...");
+        waitForServerAndReload();
+      } else {
+        toast.error(data.error || "Error durante la actualización.");
+      }
+    } catch {
+      toast.error("Error de conexión con el servidor.");
+      setUpdateLogs(prev => [...prev, "Error: Error de red o tiempo de espera agotado. El servidor puede estar reiniciándose..."]);
+    } finally {
+      setUpdatingSystem(false);
+      setShowConfirmForceUpdate(false);
+    }
+  };
+
   useEffect(() => {
     fetchConfig();
   }, []);
@@ -121,6 +202,8 @@ export function ConfigurationView() {
   useEffect(() => {
     if (activeTab === 'users') {
       fetchUsers();
+    } else if (activeTab === 'system') {
+      fetchSystemStatus();
     }
   }, [activeTab]);
 
@@ -263,6 +346,16 @@ export function ConfigurationView() {
             }`}
           >
             <Users size={14} /> Usuarios y Permisos
+          </button>
+          <button
+            onClick={() => setActiveTab('system')}
+            className={`px-4 py-2 text-xs font-bold uppercase rounded-lg transition-all flex items-center gap-1.5 ${
+              activeTab === 'system'
+                ? 'bg-[var(--primary)] text-white shadow-md'
+                : 'text-gray-500 hover:bg-gray-50'
+            }`}
+          >
+            <Terminal size={14} /> Sistema y Actualizaciones
           </button>
         </div>
       </div>
@@ -445,6 +538,170 @@ export function ConfigurationView() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {activeTab === 'system' && (
+        <div className="bg-white p-8 rounded-2xl border border-[var(--line)] shadow-sm space-y-6 animate-in fade-in duration-200">
+          <div className="flex justify-between items-start">
+            <div>
+              <h3 className="text-xl font-bold uppercase tracking-wide">Actualizaciones y Estado del Sistema</h3>
+              <p className="text-xs text-gray-500 mt-1">Verifique el estado del código y descargue las últimas versiones desde GitHub.</p>
+            </div>
+            <button
+              type="button"
+              disabled={loadingStatus || updatingSystem}
+              onClick={fetchSystemStatus}
+              className="border border-[var(--line)] bg-gray-50 hover:bg-gray-100 disabled:opacity-50 p-2.5 rounded-xl text-xs font-bold uppercase flex items-center gap-1.5 transition-all"
+            >
+              <RefreshCw size={14} className={loadingStatus ? "animate-spin" : ""} />
+              Buscar Actualizaciones
+            </button>
+          </div>
+
+          {loadingStatus && !systemStatus && (
+            <div className="p-8 text-center text-gray-500 text-sm italic">Cargando estado del sistema...</div>
+          )}
+
+          {systemStatus && (
+            <div className="grid grid-cols-2 gap-6">
+              <div className="border border-[var(--line)] bg-gray-50/50 p-6 rounded-xl space-y-4">
+                <h4 className="font-bold text-xs uppercase text-gray-400">Información del Repositorio</h4>
+                <div className="space-y-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Herramienta Git:</span>
+                    {systemStatus.gitInstalled ? (
+                      <span className="text-green-700 font-bold bg-green-50 px-2 py-0.5 rounded text-xs">Instalado</span>
+                    ) : (
+                      <span className="text-red-700 font-bold bg-red-50 px-2 py-0.5 rounded text-xs">No encontrado</span>
+                    )}
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Rama Activa:</span>
+                    <span className="font-mono font-bold uppercase bg-blue-50 text-blue-700 px-2.5 py-0.5 rounded text-xs">{systemStatus.branch || '—'}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Cambios locales sin guardar:</span>
+                    {systemStatus.localChanges ? (
+                      <span className="text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded text-xs">Sí (Modificaciones pendientes)</span>
+                    ) : (
+                      <span className="text-green-700 font-bold bg-green-50 px-2 py-0.5 rounded text-xs">No (Limpio)</span>
+                    )}
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Estado de Actualización:</span>
+                    {systemStatus.commitsBehind > 0 ? (
+                      <span className="text-amber-700 font-bold bg-amber-50 px-2.5 py-0.5 rounded text-xs">Atrasado por {systemStatus.commitsBehind} commit(s)</span>
+                    ) : (
+                      <span className="text-green-700 font-bold bg-green-50 px-2.5 py-0.5 rounded text-xs">Al día (Actualizado)</span>
+                    )}
+                  </div>
+                </div>
+
+                {systemStatus.fetchError && (
+                  <div className="p-3 bg-red-50 border border-red-100 rounded-lg text-xs text-red-700 font-medium">
+                    {systemStatus.fetchError}
+                  </div>
+                )}
+                {!systemStatus.gitInstalled && systemStatus.error && (
+                  <div className="p-3 bg-red-50 border border-red-100 rounded-lg text-xs text-red-700 font-medium">
+                    {systemStatus.error}
+                  </div>
+                )}
+              </div>
+
+              <div className="border border-[var(--line)] bg-gray-50/50 p-6 rounded-xl flex flex-col justify-between">
+                <div className="space-y-3">
+                  <h4 className="font-bold text-xs uppercase text-gray-400">Acciones Disponibles</h4>
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    Use <strong>Actualización Segura</strong> para traer la última versión conservando cualquier cambio local pendiente.
+                    Use <strong>Actualización Limpia</strong> solo si necesita descartar cambios locales y dejar el sistema exactamente como en GitHub.
+                    El servidor se reiniciará solo al terminar; la página se recargará automáticamente.
+                  </p>
+                </div>
+
+                <div className="flex gap-4 mt-6">
+                  <button
+                    type="button"
+                    disabled={!systemStatus.gitInstalled || updatingSystem || loadingStatus}
+                    onClick={() => handleUpdate(false)}
+                    className="flex-1 bg-[var(--primary)] text-white hover:bg-[var(--primary-dark)] disabled:opacity-50 py-3 rounded-xl font-bold uppercase text-xs transition-all shadow-md shadow-blue-100 flex items-center justify-center gap-1.5"
+                  >
+                    <CloudDownload size={14} />
+                    Actualización Segura
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!systemStatus.gitInstalled || updatingSystem || loadingStatus}
+                    onClick={() => setShowConfirmForceUpdate(true)}
+                    className="px-4 border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-50 py-3 rounded-xl font-bold uppercase text-xs transition-all flex items-center justify-center gap-1.5"
+                  >
+                    <AlertTriangle size={14} />
+                    Limpia
+                  </button>
+                </div>
+              </div>
+
+              {(updateLogs.length > 0 || updatingSystem) && (
+                <div className="col-span-2 border border-slate-800 bg-slate-900 text-slate-100 p-5 rounded-xl font-mono text-xs space-y-2 shadow-inner">
+                  <div className="flex justify-between items-center border-b border-slate-800 pb-2 mb-2">
+                    <span className="text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                      <Terminal size={12} /> Consola de Salida
+                    </span>
+                    {updatingSystem && (
+                      <span className="text-blue-400 animate-pulse text-[10px] uppercase font-bold">Procesando...</span>
+                    )}
+                  </div>
+                  <div className="max-h-60 overflow-y-auto space-y-1.5 pr-2">
+                    {updateLogs.map((log, i) => (
+                      <div key={i} className="whitespace-pre-wrap leading-relaxed opacity-90">{log}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Confirm Force Update Modal */}
+      {showConfirmForceUpdate && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[70] p-4 animate-in fade-in duration-200">
+          <div className="bg-white border border-[var(--line)] w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-[var(--line)] bg-red-600 text-white flex justify-between items-center">
+              <h3 className="font-bold uppercase tracking-widest text-sm flex items-center gap-1.5">
+                <AlertTriangle size={16} /> Confirmar Actualización Limpia
+              </h3>
+              <button onClick={() => setShowConfirmForceUpdate(false)} className="text-white hover:opacity-75 font-semibold">✕</button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-gray-600 leading-relaxed">
+                <strong>ATENCIÓN:</strong> Esta acción alinea el código local exactamente con el de GitHub.
+              </p>
+              <div className="p-3 bg-red-50 border border-red-100 text-red-700 rounded-xl text-xs font-semibold">
+                Cualquier cambio de código local que no esté guardado en GitHub se eliminará permanentemente. Esta acción no se puede deshacer.
+                Esto no afecta la base de datos ni las ventas registradas.
+              </div>
+
+              <div className="pt-4 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleUpdate(true)}
+                  className="flex-1 bg-red-600 text-white py-3 rounded-xl font-bold uppercase text-xs hover:bg-red-700 transition-all"
+                >
+                  Sí, Descartar todo y Actualizar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmForceUpdate(false)}
+                  className="px-6 border border-[var(--line)] py-3 rounded-xl font-bold uppercase text-xs hover:bg-gray-50 transition-all"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
