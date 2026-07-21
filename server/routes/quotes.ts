@@ -7,6 +7,28 @@ const router = express.Router();
 
 router.use(requirePermission('quotes'));
 
+const REQUIRED_COMPANY_FIELDS = ['company_name', 'company_rut', 'company_address', 'company_bank_details'];
+
+// Every fresh install starts with empty company_settings (see server.ts): a
+// quote PDF issued with a blank razón social/RUT/cuenta bancaria is useless
+// to the client, so the first quote can't be created until these are filled
+// in from Configuración > Datos de Empresa.
+function assertCompanyDataConfigured() {
+  const rows = db.prepare(
+    `SELECT key, value FROM company_settings WHERE key IN (${REQUIRED_COMPANY_FIELDS.map(() => '?').join(',')})`
+  ).all(...REQUIRED_COMPANY_FIELDS) as { key: string; value: string }[];
+
+  const configured = new Map(rows.map(r => [r.key, r.value]));
+  const missing = REQUIRED_COMPANY_FIELDS.some(field => !configured.get(field)?.trim());
+
+  if (missing) {
+    throw new AppError(
+      'Complete los datos de su empresa (Razón Social, RUT, Dirección y Datos Bancarios) en Configuración antes de emitir cotizaciones.',
+      400
+    );
+  }
+}
+
 // Get Quotes
 router.get('/', (req, res, next) => {
   try {
@@ -58,6 +80,7 @@ router.post('/', (req, res, next) => {
   } = req.body;
 
   try {
+    assertCompanyDataConfigured();
     if (!client_name) {
       throw new AppError('Nombre del cliente es obligatorio', 400);
     }

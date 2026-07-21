@@ -22,16 +22,20 @@ import { runMigrations } from './db/migrations';
 initializeSchema();
 runMigrations();
 
-// Company default settings seeding
+// Company settings always start empty and are filled in from the UI
+// (Configuración > Datos de Empresa). They must never default from .env: if
+// this project folder is ever copied to set up a new client instead of a
+// fresh clone, an old .env would otherwise leak the previous client's name,
+// RUT and bank account into the new install.
 const checkSettings = db.prepare("SELECT COUNT(*) as count FROM company_settings").get() as { count: number };
 if (checkSettings.count === 0) {
   const insertSetting = db.prepare("INSERT INTO company_settings (key, value) VALUES (?, ?)");
-  insertSetting.run('company_name', process.env.COMPANY_NAME || '');
-  insertSetting.run('company_rut', process.env.COMPANY_RUT || '');
-  insertSetting.run('company_address', process.env.COMPANY_ADDRESS || '');
-  insertSetting.run('company_phone', process.env.COMPANY_PHONE || '');
-  insertSetting.run('company_email', process.env.COMPANY_EMAIL || '');
-  insertSetting.run('company_bank_details', process.env.COMPANY_BANK_DETAILS || '');
+  insertSetting.run('company_name', '');
+  insertSetting.run('company_rut', '');
+  insertSetting.run('company_address', '');
+  insertSetting.run('company_phone', '');
+  insertSetting.run('company_email', '');
+  insertSetting.run('company_bank_details', '');
 }
 
 import { requireAuth, hashPassword } from './middleware/auth';
