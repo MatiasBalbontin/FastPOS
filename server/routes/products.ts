@@ -2,8 +2,15 @@ import express from 'express';
 import { db } from '../db/index';
 import { validateBody, ProductSchema, ProductUpdateSchema } from '../middleware/validation';
 import { AppError } from '../middleware/errorHandler';
+import { requirePermission } from '../middleware/auth';
 
 const router = express.Router();
+
+// El catálogo de productos y el alta rápida (POST) los usan también Ventas y
+// Cotizaciones para cualquier operador autenticado (registro express desde el
+// mostrador, selector de productos, etc.), así que sólo las acciones de
+// administración de inventario propiamente tales (editar detalle, dar de baja,
+// restaurar) quedan restringidas al permiso 'inventory'.
 
 // Get all products
 router.get('/', (req, res, next) => {
@@ -79,7 +86,7 @@ router.post('/', validateBody(ProductSchema), (req, res, next) => {
 });
 
 // Update Product Details
-router.put('/:id', validateBody(ProductUpdateSchema), (req, res, next) => {
+router.put('/:id', requirePermission('inventory'), validateBody(ProductUpdateSchema), (req, res, next) => {
   const { name, type, sale_price, cost } = req.body;
   const { id } = req.params;
   try {
@@ -131,7 +138,7 @@ router.put('/:id', validateBody(ProductUpdateSchema), (req, res, next) => {
 });
 
 // Soft Delete
-router.delete('/:id', (req, res, next) => {
+router.delete('/:id', requirePermission('inventory'), (req, res, next) => {
   try {
     db.prepare('UPDATE products SET active = 0 WHERE id = ?').run(req.params.id);
     res.json({ success: true });
@@ -141,7 +148,7 @@ router.delete('/:id', (req, res, next) => {
 });
 
 // Restore
-router.post('/:id/restore', (req, res, next) => {
+router.post('/:id/restore', requirePermission('inventory'), (req, res, next) => {
   try {
     db.prepare('UPDATE products SET active = 1 WHERE id = ?').run(req.params.id);
     res.json({ success: true });

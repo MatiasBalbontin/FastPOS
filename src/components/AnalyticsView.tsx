@@ -275,9 +275,12 @@ export function AnalyticsView({ analytics, startDate, setStartDate, endDate, set
               </h3>
               
               <div className="w-full flex-1 flex items-center justify-center relative min-h-[220px]">
-                {(() => {
-                  const breakEven = analytics.summary.total_fixed_costs || 200000;
-                  const percent = Math.min(100, (currentRevenue / breakEven) * 100);
+                {!analytics.summary.total_fixed_costs ? (
+                  <div className="text-center text-sm text-gray-400 italic px-8">
+                    Configura tus Costos Fijos para ver tu punto de equilibrio.
+                  </div>
+                ) : (() => {
+                  const breakEven = analytics.summary.total_fixed_costs;
                   const data = [
                     { name: 'Recaudado', value: currentRevenue },
                     { name: 'Restante', value: Math.max(0, breakEven - currentRevenue) }
@@ -358,8 +361,12 @@ export function AnalyticsView({ analytics, startDate, setStartDate, endDate, set
               </div>
               <div className="divide-y divide-[var(--line)]">
                 {shifts.map((s: any) => {
-                  const cashDiff = s.status === 'closed' ? (s.closing_amount_cash - s.expected_amount_cash) : 0;
-                  const cardDiff = s.status === 'closed' ? (s.closing_amount_card - s.expected_amount_card) : 0;
+                  // Rounded to the nearest peso before comparing: these are sums of
+                  // floating-point REAL columns, so raw subtraction can leave a
+                  // fractional-cent residue that would falsely flag a balanced
+                  // shift as "Descuadrado".
+                  const cashDiff = s.status === 'closed' ? Math.round(s.closing_amount_cash - s.expected_amount_cash) : 0;
+                  const cardDiff = s.status === 'closed' ? Math.round(s.closing_amount_card - s.expected_amount_card) : 0;
                   const isBalanced = cashDiff === 0 && cardDiff === 0;
 
                   return (

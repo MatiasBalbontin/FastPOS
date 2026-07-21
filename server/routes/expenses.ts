@@ -1,8 +1,11 @@
 import express from 'express';
 import { db } from '../db/index';
 import { validateBody, ExpenseSchema } from '../middleware/validation';
+import { requirePermission } from '../middleware/auth';
 
 const router = express.Router();
+
+router.use(requirePermission('expenses'));
 
 // Get Expenses
 router.get('/', (req, res, next) => {

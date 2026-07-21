@@ -20,7 +20,7 @@ export interface Analytics {
     total_expenses: number; cash_expenses: number; card_expenses: number;
     total_inventory_value: number;
     total_receivables: number;
-    total_fixed_costs: number;
+    total_fixed_costs: number | null;
   };
   inventoryByFamily: { type: string; total_stock: number; total_value: number }[];
 }

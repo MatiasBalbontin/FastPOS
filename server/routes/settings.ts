@@ -1,7 +1,12 @@
 import express from 'express';
 import { db } from '../db/index';
+import { requirePermission } from '../middleware/auth';
 
 const router = express.Router();
+
+// Reading company info (name, RUT, bank details) is needed by any authenticated
+// module that prints documents (quotes, receipts), so only the write path is
+// restricted to users with the 'configuration' permission.
 
 // Get settings
 router.get('/', (req, res, next) => {
@@ -18,7 +23,7 @@ router.get('/', (req, res, next) => {
 });
 
 // Update settings
-router.post('/', (req, res, next) => {
+router.post('/', requirePermission('configuration'), (req, res, next) => {
   const settings = req.body;
   try {
     const transaction = db.transaction(() => {

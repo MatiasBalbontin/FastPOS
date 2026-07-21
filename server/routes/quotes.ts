@@ -1,8 +1,11 @@
 import express from 'express';
 import { db } from '../db/index';
 import { AppError } from '../middleware/errorHandler';
+import { requirePermission } from '../middleware/auth';
 
 const router = express.Router();
+
+router.use(requirePermission('quotes'));
 
 // Get Quotes
 router.get('/', (req, res, next) => {

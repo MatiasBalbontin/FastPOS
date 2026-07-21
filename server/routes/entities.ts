@@ -2,11 +2,18 @@ import express from 'express';
 import { db } from '../db/index';
 import { validateBody, EntitySchema } from '../middleware/validation';
 import { AppError } from '../middleware/errorHandler';
+import { requirePermission, requireAnyPermission } from '../middleware/auth';
 
 const router = express.Router();
 
+// Ventas necesita poder listar/crear clientes al vender al fiado, y Cotizaciones
+// necesita listarlos para asociar un cliente a la cotización, aunque el
+// operador no tenga acceso al módulo de Entidades; editar/eliminar sí queda
+// restringido a quien administra la cartera de clientes.
+const readWritePermission = requireAnyPermission(['entities', 'fiar', 'quotes']);
+
 // Get customers
-router.get('/', (req, res, next) => {
+router.get('/', readWritePermission, (req, res, next) => {
   const { type } = req.query;
   try {
     let query = 'SELECT * FROM customers';
@@ -24,7 +31,7 @@ router.get('/', (req, res, next) => {
 });
 
 // Create customer
-router.post('/', validateBody(EntitySchema), (req, res, next) => {
+router.post('/', readWritePermission, validateBody(EntitySchema), (req, res, next) => {
   const { rut, first_name, last_name, type, address, contact, phone, email } = req.body;
   try {
     if (!first_name) throw new AppError("Nombre / Razón Social es obligatorio", 400);
@@ -52,7 +59,7 @@ router.post('/', validateBody(EntitySchema), (req, res, next) => {
 });
 
 // Update customer
-router.put('/:id', validateBody(EntitySchema), (req, res, next) => {
+router.put('/:id', requirePermission('entities'), validateBody(EntitySchema), (req, res, next) => {
   const { id } = req.params;
   const { rut, first_name, last_name, type, address, contact, phone, email } = req.body;
   try {
@@ -90,7 +97,7 @@ router.put('/:id', validateBody(EntitySchema), (req, res, next) => {
 });
 
 // Delete customer
-router.delete('/:id', (req, res, next) => {
+router.delete('/:id', requirePermission('entities'), (req, res, next) => {
   const { id } = req.params;
   try {
     const salesCheck = db.prepare('SELECT COUNT(*) as count FROM sales WHERE customer_id = ?').get(id) as { count: number };

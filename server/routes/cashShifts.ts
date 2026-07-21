@@ -1,6 +1,6 @@
 import express from 'express';
 import { db } from '../db/index';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, requirePermission } from '../middleware/auth';
 import { validateBody, ShiftOpenSchema, ShiftCloseSchema } from '../middleware/validation';
 
 const router = express.Router();
@@ -42,7 +42,7 @@ function getShiftTotals(openingTime: string) {
 }
 
 // GET /api/cash-shifts/active - Get current active shift
-router.get('/active', (req, res, next) => {
+router.get('/active', requirePermission('sales'), (req, res, next) => {
   try {
     const shift = db.prepare(`
       SELECT * FROM cash_shifts 
@@ -80,7 +80,7 @@ router.get('/active', (req, res, next) => {
 });
 
 // POST /api/cash-shifts/open - Open a new shift
-router.post('/open', validateBody(ShiftOpenSchema), (req, res, next) => {
+router.post('/open', requirePermission('sales'), validateBody(ShiftOpenSchema), (req, res, next) => {
   const { opening_amount } = req.body;
   const userId = req.session.userId;
 
@@ -103,7 +103,7 @@ router.post('/open', validateBody(ShiftOpenSchema), (req, res, next) => {
 });
 
 // POST /api/cash-shifts/close - Close active shift
-router.post('/close', validateBody(ShiftCloseSchema), (req, res, next) => {
+router.post('/close', requirePermission('sales'), validateBody(ShiftCloseSchema), (req, res, next) => {
   const { closing_amount_cash, closing_amount_card } = req.body;
 
   try {
@@ -153,7 +153,7 @@ router.post('/close', validateBody(ShiftCloseSchema), (req, res, next) => {
 });
 
 // GET /api/cash-shifts - Get shift history
-router.get('/', (req, res, next) => {
+router.get('/', requirePermission('analytics'), (req, res, next) => {
   try {
     const shifts = db.prepare(`
       SELECT 

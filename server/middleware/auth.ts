@@ -36,3 +36,22 @@ export const requirePermission = (moduleName: string) => {
     }
   };
 };
+
+// Same as requirePermission, but grants access if the user has ANY of the
+// listed modules. Used where a screen from module A legitimately needs to
+// read/create records that belong to module B (e.g. Ventas necesita crear
+// clientes al fiar, aunque el operador no tenga acceso a Entidades).
+export const requireAnyPermission = (moduleNames: string[]) => {
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (req.session && req.session.isAuthenticated) {
+      const userPermissions = req.session.permissions || [];
+      if (req.session.username === 'admin' || moduleNames.some(m => userPermissions.includes(m))) {
+        next();
+      } else {
+        res.status(403).json({ error: 'Permisos insuficientes para acceder a este módulo' });
+      }
+    } else {
+      res.status(401).json({ error: 'No autenticado' });
+    }
+  };
+};

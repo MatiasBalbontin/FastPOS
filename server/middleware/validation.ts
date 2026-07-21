@@ -29,7 +29,7 @@ export const ProductSchema = z.object({
 export const SaleSchema = z.object({
   product_id: z.union([z.string(), z.number()]),
   quantity: z.number().gt(0),
-  payment_method: z.enum(['cash', 'card', 'cuenta_por_cobrar', 'receivable']).optional()
+  payment_method: z.enum(['cash', 'card', 'cuenta_por_cobrar']).optional()
 });
 
 export const SaleBulkSchema = z.object({
@@ -37,7 +37,7 @@ export const SaleBulkSchema = z.object({
     product_id: z.union([z.string(), z.number()]),
     quantity: z.number().gt(0)
   })),
-  method: z.enum(['cash', 'card', 'cuenta_por_cobrar', 'receivable']).optional(),
+  method: z.enum(['cash', 'card', 'cuenta_por_cobrar']).optional(),
   customer_id: z.union([z.string(), z.number()]).optional().nullable()
 });
 

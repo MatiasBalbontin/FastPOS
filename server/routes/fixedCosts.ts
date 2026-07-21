@@ -1,7 +1,10 @@
 import express from 'express';
 import { db } from '../db/index';
+import { requirePermission } from '../middleware/auth';
 
 const router = express.Router();
+
+router.use(requirePermission('fixed_costs'));
 
 // Get Fixed Costs
 router.get('/', (req, res, next) => {

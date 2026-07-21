@@ -1,10 +1,16 @@
 import express from 'express';
 import { db } from '../db/index';
+import { requirePermission } from '../middleware/auth';
 
 const router = express.Router();
 
+// NOTE: this router is mounted at the bare '/api' prefix in server.ts (it only
+// owns the two specific paths below), so a router-level `router.use(...)`
+// here would run for every '/api/*' request in the app, not just this
+// router's own routes. The permission check must be attached per-route.
+
 // Bulk Import
-router.post('/products/bulk', (req, res, next) => {
+router.post('/products/bulk', requirePermission('inventory'), (req, res, next) => {
   const { products: importData } = req.body;
 
   try {
@@ -48,7 +54,7 @@ router.post('/products/bulk', (req, res, next) => {
 });
 
 // Export Data
-router.get('/export', (req, res, next) => {
+router.get('/export', requirePermission('inventory'), (req, res, next) => {
   try {
     const products = db.prepare('SELECT * FROM products').all();
     const batches = db.prepare('SELECT * FROM batches').all();

@@ -132,6 +132,16 @@ export function initializeSchema() {
       FOREIGN KEY (user_id) REFERENCES users(id)
     );
 
+    CREATE TABLE IF NOT EXISTS sale_batch_consumptions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sale_id INTEGER NOT NULL,
+      batch_id INTEGER NOT NULL,
+      quantity INTEGER NOT NULL,
+      FOREIGN KEY (sale_id) REFERENCES sales(id),
+      FOREIGN KEY (batch_id) REFERENCES batches(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_sale_batch_consumptions_sale_id ON sale_batch_consumptions(sale_id);
     CREATE INDEX IF NOT EXISTS idx_sales_created_at ON sales(created_at);
     CREATE INDEX IF NOT EXISTS idx_sales_ticket_id ON sales(ticket_id);
     CREATE INDEX IF NOT EXISTS idx_sales_product_id ON sales(product_id);
