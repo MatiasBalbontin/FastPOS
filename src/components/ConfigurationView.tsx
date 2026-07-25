@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Check, Users, UserPlus, Shield, Trash2, Edit2, Key, CheckCircle, XCircle, Terminal, CloudDownload, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Check, Users, UserPlus, Shield, Trash2, Edit2, Key, CheckCircle, XCircle, Terminal, CloudDownload, RefreshCw, AlertTriangle, Eye, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface UserItem {
@@ -18,7 +18,12 @@ interface SystemStatus {
   error?: string;
 }
 
-export function ConfigurationView() {
+interface ConfigurationViewProps {
+  currentUser: string;
+}
+
+export function ConfigurationView({ currentUser }: ConfigurationViewProps) {
+  const isAdminUser = currentUser === 'admin';
   const [activeTab, setActiveTab] = useState<'company' | 'users' | 'system' | 'audit'>('company');
 
   // --- System Updates State ---
@@ -50,6 +55,8 @@ export function ConfigurationView() {
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingUser, setEditingUser] = useState<UserItem | null>(null);
+  const [revealedPassword, setRevealedPassword] = useState<{ username: string; password: string | null } | null>(null);
+  const [revealingId, setRevealingId] = useState<number | null>(null);
 
   // --- New/Edit User Form State ---
   const [userFormData, setUserFormData] = useState({
@@ -266,14 +273,22 @@ export function ConfigurationView() {
     if (!editingUser) return;
 
     try {
+      // Non-admins may only change their own password — permissions and account
+      // status are an admin-exclusive capability, enforced again server-side.
+      const body = isAdminUser
+        ? {
+            permissions: userFormData.permissions,
+            password: userFormData.password || undefined,
+            active: userFormData.active
+          }
+        : {
+            password: userFormData.password || undefined
+          };
+
       const res = await fetch(`/api/users/${editingUser.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          permissions: userFormData.permissions,
-          password: userFormData.password || undefined,
-          active: userFormData.active
-        })
+        body: JSON.stringify(body)
       });
 
       if (res.ok) {
@@ -307,6 +322,24 @@ export function ConfigurationView() {
       }
     } catch {
       toast.error("Error de conexión");
+    }
+  };
+
+  const handleRevealPassword = async (user: UserItem) => {
+    setRevealingId(user.id);
+    try {
+      const res = await fetch(`/api/users/${user.id}/reveal-password`);
+      if (res.ok) {
+        const data = await res.json();
+        setRevealedPassword({ username: user.username, password: data.password });
+      } else {
+        const data = await res.json();
+        toast.error(data.error || "Error al obtener la contraseña");
+      }
+    } catch {
+      toast.error("Error de conexión");
+    } finally {
+      setRevealingId(null);
     }
   };
 
@@ -503,12 +536,14 @@ export function ConfigurationView() {
         <div className="space-y-6 animate-in fade-in duration-200">
           <div className="flex justify-between items-center">
             <h3 className="text-sm font-bold uppercase tracking-wider text-gray-400">Directorio de Operadores</h3>
-            <button
-              onClick={handleOpenCreate}
-              className="bg-[var(--primary)] text-white px-4 py-2.5 rounded-xl text-[10px] font-bold uppercase hover:opacity-90 transition-all shadow-md flex items-center gap-1.5"
-            >
-              <UserPlus size={14} /> Crear Nuevo Operador
-            </button>
+            {isAdminUser && (
+              <button
+                onClick={handleOpenCreate}
+                className="bg-[var(--primary)] text-white px-4 py-2.5 rounded-xl text-[10px] font-bold uppercase hover:opacity-90 transition-all shadow-md flex items-center gap-1.5"
+              >
+                <UserPlus size={14} /> Crear Nuevo Operador
+              </button>
+            )}
           </div>
 
           {loadingUsers ? (
@@ -533,7 +568,9 @@ export function ConfigurationView() {
                       )}
                     </div>
                     <div className="flex flex-wrap gap-1 pr-4">
-                      {u.username === 'admin' ? (
+                      {!isAdminUser ? (
+                        <span className="text-xs text-gray-400 italic">Gestionado por el administrador</span>
+                      ) : u.username === 'admin' ? (
                         <span className="bg-slate-100 border border-slate-200 text-slate-700 text-[9px] font-bold uppercase px-2 py-0.5 rounded-full flex items-center gap-1">
                           <Shield size={10} /> ACCESO TOTAL
                         </span>
@@ -547,7 +584,7 @@ export function ConfigurationView() {
                           );
                         })
                       )}
-                      {u.username !== 'admin' && u.permissions.length === 0 && (
+                      {isAdminUser && u.username !== 'admin' && u.permissions.length === 0 && (
                         <span className="text-xs text-gray-400 italic">Sin accesos otorgados</span>
                       )}
                     </div>
@@ -563,14 +600,24 @@ export function ConfigurationView() {
                       )}
                     </div>
                     <div className="flex items-center justify-center gap-2">
+                      {isAdminUser && (
+                        <button
+                          onClick={() => handleRevealPassword(u)}
+                          disabled={revealingId === u.id}
+                          className="p-1.5 text-gray-400 hover:text-[var(--primary)] hover:bg-blue-50 rounded-lg transition-all disabled:opacity-50"
+                          title="Ver Contraseña"
+                        >
+                          <Eye size={15} />
+                        </button>
+                      )}
                       <button
                         onClick={() => handleOpenEdit(u)}
                         className="p-1.5 text-gray-400 hover:text-[var(--primary)] hover:bg-blue-50 rounded-lg transition-all"
-                        title="Editar Permisos Credenciales"
+                        title={isAdminUser ? "Editar Permisos y Credenciales" : "Cambiar mi Contraseña"}
                       >
                         <Edit2 size={15} />
                       </button>
-                      {u.username !== 'admin' && (
+                      {isAdminUser && u.username !== 'admin' && (
                         <button
                           onClick={() => handleDeleteUser(u.id, u.username)}
                           className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
@@ -900,7 +947,7 @@ export function ConfigurationView() {
                 />
               </div>
 
-              {editingUser.username !== 'admin' && (
+              {isAdminUser && editingUser.username !== 'admin' && (
                 <div>
                   <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Estado de la cuenta</label>
                   <select
@@ -914,7 +961,7 @@ export function ConfigurationView() {
                 </div>
               )}
 
-              {editingUser.username !== 'admin' && (
+              {isAdminUser && editingUser.username !== 'admin' && (
                 <div>
                   <label className="text-[10px] font-bold uppercase text-gray-400 block mb-3">Permisos de Módulos</label>
                   <div className="grid grid-cols-2 gap-3 bg-gray-50 p-4 rounded-xl border border-[var(--line)]">
@@ -945,6 +992,41 @@ export function ConfigurationView() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Reveal Password Modal */}
+      {revealedPassword && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[80] p-4" onClick={() => setRevealedPassword(null)}>
+          <div className="bg-white border border-[var(--line)] w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="p-6 border-b border-[var(--line)] bg-[var(--primary)] text-white flex justify-between items-center">
+              <h3 className="font-bold uppercase tracking-widest text-sm">Contraseña de {revealedPassword.username}</h3>
+              <button onClick={() => setRevealedPassword(null)} className="text-white hover:opacity-75 font-semibold">✕</button>
+            </div>
+            <div className="p-6 space-y-4">
+              {revealedPassword.password ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 bg-gray-50 border border-[var(--line)] p-3 rounded-lg font-mono text-lg tracking-wide text-center select-all">
+                    {revealedPassword.password}
+                  </div>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(revealedPassword.password || '');
+                      toast.success("Contraseña copiada");
+                    }}
+                    className="p-3 border border-[var(--line)] rounded-lg hover:bg-gray-50 transition-all"
+                    title="Copiar"
+                  >
+                    <Copy size={16} />
+                  </button>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500 italic">
+                  Esta cuenta fue creada antes de habilitar esta función y su contraseña original no quedó guardada. Restablézcala desde "Editar" para poder verla la próxima vez.
+                </p>
+              )}
+            </div>
           </div>
         </div>
       )}

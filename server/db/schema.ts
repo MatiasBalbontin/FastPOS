@@ -114,6 +114,7 @@ export function initializeSchema() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE NOT NULL,
       password TEXT NOT NULL,
+      password_plain TEXT,
       permissions TEXT NOT NULL,
       active INTEGER DEFAULT 1
     );

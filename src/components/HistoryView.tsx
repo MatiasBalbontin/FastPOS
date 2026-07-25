@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Banknote, CreditCard, FileText } from 'lucide-react';
+import { Banknote, CreditCard, FileText, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '../lib/utils';
+import * as XLSX from 'xlsx';
 
 interface HistoryViewProps {
   onRefresh: () => void;
@@ -29,6 +30,29 @@ export function HistoryView({ onRefresh }: HistoryViewProps) {
     fetchHistory();
   }, [startDate, endDate]);
 
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const res = await fetch('/api/history/export');
+      if (!res.ok) throw new Error();
+      const { sales, payments, expenses } = await res.json();
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(sales), "Ventas");
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(payments), "Abonos");
+      XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(expenses), "Gastos");
+      XLSX.writeFile(workbook, `fastpos_historial_completo_${new Date().toISOString().split('T')[0]}.xlsx`);
+
+      toast.success("Exportación generada. Incluye TODOS los registros (completados y anulados) para que puedas filtrar y cuadrar tú mismo en Excel.");
+    } catch {
+      toast.error("Error al exportar el historial");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const handleVoid = async (id: string, type: string) => {
     if (!window.confirm("¿Estás seguro de anular esta operación? Esta acción no se puede deshacer.")) return;
 
@@ -53,6 +77,15 @@ export function HistoryView({ onRefresh }: HistoryViewProps) {
           <p className="text-sm text-gray-500 mt-1">Registro de ventas, fiados y abonos.</p>
         </div>
         <div className="flex items-center gap-4">
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            title="Exporta TODAS las ventas, abonos y gastos (incluyendo anulados) a un archivo Excel para cuadrar manualmente"
+            className="bg-white border border-[var(--line)] hover:bg-gray-50 text-[var(--ink)] font-bold uppercase tracking-wider text-xs px-5 py-3 rounded-xl transition-all shadow-sm h-[42px] flex items-center gap-2 disabled:opacity-50"
+          >
+            <Download size={14} />
+            {exporting ? 'Generando...' : 'Exportar a Excel'}
+          </button>
           <div className="flex items-center gap-4 bg-white p-2.5 rounded-xl border border-[var(--line)] shadow-sm">
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-bold uppercase text-gray-400 px-2">Desde</span>

@@ -11,6 +11,8 @@ const router = express.Router();
 // Enforce configuration permission for all user management endpoints
 router.use(requirePermission('configuration'));
 
+const isAdmin = (req: express.Request) => req.session.username === 'admin';
+
 const CreateUserSchema = z.object({
   username: z.string().min(3).max(50).toLowerCase().trim(),
   password: z.string().min(4),
@@ -23,11 +25,15 @@ const UpdateUserSchema = z.object({
   active: z.number().int().min(0).max(1).optional()
 });
 
-// List all users
+// List users. Admin sees everyone; anyone else only sees their own account —
+// permissions management is an admin-exclusive capability.
 router.get('/', (req, res, next) => {
   try {
-    const users = db.prepare('SELECT id, username, permissions, active FROM users ORDER BY id ASC').all() as any[];
-    const formatted = users.map(u => ({
+    const rows = isAdmin(req)
+      ? db.prepare('SELECT id, username, permissions, active FROM users ORDER BY id ASC').all() as any[]
+      : db.prepare('SELECT id, username, permissions, active FROM users WHERE id = ?').all(req.session.userId) as any[];
+
+    const formatted = rows.map(u => ({
       ...u,
       permissions: JSON.parse(u.permissions || '[]')
     }));
@@ -37,8 +43,12 @@ router.get('/', (req, res, next) => {
   }
 });
 
-// Create user
+// Create user — admin only, since it necessarily assigns permissions.
 router.post('/', validateBody(CreateUserSchema), (req, res, next) => {
+  if (!isAdmin(req)) {
+    return next(new AppError('Solo el administrador puede crear operadores', 403));
+  }
+
   const { username, password, permissions } = req.body;
   try {
     const check = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
@@ -49,8 +59,8 @@ router.post('/', validateBody(CreateUserSchema), (req, res, next) => {
     const hashed = hashPassword(password);
     const serializedPermissions = JSON.stringify(permissions);
 
-    db.prepare('INSERT INTO users (username, password, permissions) VALUES (?, ?, ?)')
-      .run(username, hashed, serializedPermissions);
+    db.prepare('INSERT INTO users (username, password, password_plain, permissions) VALUES (?, ?, ?, ?)')
+      .run(username, hashed, password, serializedPermissions);
 
     logAudit(req.session.userId, req.session.username, 'CREATE_USER', { target_username: username, permissions });
 
@@ -66,9 +76,21 @@ router.put('/:id', validateBody(UpdateUserSchema), (req, res, next) => {
   const { permissions, password, active } = req.body;
 
   try {
-    const user = db.prepare('SELECT username FROM users WHERE id = ?').get(id) as { username: string } | undefined;
+    const user = db.prepare('SELECT id, username FROM users WHERE id = ?').get(id) as { id: number; username: string } | undefined;
     if (!user) {
       return next(new AppError('Usuario no encontrado', 404));
+    }
+
+    const admin = isAdmin(req);
+
+    if (!admin) {
+      // Non-admins may only touch their own account, and only their own password.
+      if (user.id !== req.session.userId) {
+        return next(new AppError('Solo puede modificar su propia cuenta', 403));
+      }
+      if (permissions !== undefined || active !== undefined) {
+        return next(new AppError('Solo el administrador puede modificar permisos o el estado de la cuenta', 403));
+      }
     }
 
     // Protect master admin account from modifications that strip config permissions or disable it
@@ -90,7 +112,7 @@ router.put('/:id', validateBody(UpdateUserSchema), (req, res, next) => {
       }
       if (password) {
         const hashed = hashPassword(password);
-        db.prepare('UPDATE users SET password = ? WHERE id = ?').run(hashed, id);
+        db.prepare('UPDATE users SET password = ?, password_plain = ? WHERE id = ?').run(hashed, password, id);
       }
     });
 
@@ -109,8 +131,35 @@ router.put('/:id', validateBody(UpdateUserSchema), (req, res, next) => {
   }
 });
 
-// Delete user
+// Reveal the plaintext password — admin only. Returns null if the account's
+// password predates the plaintext column (only the irreversible hash exists);
+// the admin must reset it to be able to view it going forward.
+router.get('/:id/reveal-password', (req, res, next) => {
+  if (!isAdmin(req)) {
+    return next(new AppError('Solo el administrador puede ver contraseñas', 403));
+  }
+
+  const { id } = req.params;
+  try {
+    const user = db.prepare('SELECT username, password_plain FROM users WHERE id = ?').get(id) as { username: string; password_plain: string | null } | undefined;
+    if (!user) {
+      return next(new AppError('Usuario no encontrado', 404));
+    }
+
+    logAudit(req.session.userId, req.session.username, 'VIEW_PASSWORD', { target_username: user.username });
+
+    res.json({ password: user.password_plain });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Delete user — admin only.
 router.delete('/:id', (req, res, next) => {
+  if (!isAdmin(req)) {
+    return next(new AppError('Solo el administrador puede eliminar operadores', 403));
+  }
+
   const { id } = req.params;
   try {
     const user = db.prepare('SELECT username FROM users WHERE id = ?').get(id) as { username: string } | undefined;

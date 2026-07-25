@@ -97,4 +97,53 @@ router.get('/', requirePermission('history'), (req, res, next) => {
   }
 });
 
+// GET /api/history/export - Raw, ungrouped rows for manual reconciliation in Excel.
+// Unlike GET /, this returns every sale line item (not grouped by ticket), includes
+// voided records with their status, and is not capped at 100 rows.
+router.get('/export', requirePermission('history'), (req, res, next) => {
+  try {
+    const sales = db.prepare(`
+      SELECT
+        s.id,
+        s.ticket_id,
+        s.created_at,
+        p.name as product_name,
+        s.quantity,
+        s.sale_price,
+        (s.quantity * s.sale_price) as line_total,
+        s.total_cost,
+        s.payment_method,
+        s.status,
+        c.first_name || ' ' || c.last_name as customer_name
+      FROM sales s
+      JOIN products p ON s.product_id = p.id
+      LEFT JOIN customers c ON s.customer_id = c.id
+      ORDER BY s.created_at ASC
+    `).all();
+
+    const payments = db.prepare(`
+      SELECT
+        p.id,
+        p.created_at,
+        p.amount,
+        p.method,
+        p.status,
+        c.first_name || ' ' || c.last_name as customer_name
+      FROM customer_payments p
+      JOIN customers c ON p.customer_id = c.id
+      ORDER BY p.created_at ASC
+    `).all();
+
+    const expenses = db.prepare(`
+      SELECT id, created_at, description, amount, method, status
+      FROM expenses
+      ORDER BY created_at ASC
+    `).all();
+
+    res.json({ sales, payments, expenses });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 export default router;

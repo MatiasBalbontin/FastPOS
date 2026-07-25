@@ -21,6 +21,13 @@ export function runMigrations() {
     db.exec(`ALTER TABLE customer_payments ADD COLUMN status TEXT DEFAULT 'completed'`);
   } catch (e) {}
 
+  // Plaintext copy of the password, populated only going forward (on create/reset) so
+  // admin can reveal it from the UI. Users created before this migration keep NULL here
+  // until their password is next changed — their old SHA-256 hash cannot be reversed.
+  try {
+    db.exec(`ALTER TABLE users ADD COLUMN password_plain TEXT`);
+  } catch (e) {}
+
   try { db.exec(`ALTER TABLE customers ADD COLUMN type TEXT DEFAULT 'cliente'`); } catch (e) {}
   try { db.exec(`ALTER TABLE customers ADD COLUMN address TEXT`); } catch (e) {}
   try { db.exec(`ALTER TABLE customers ADD COLUMN contact TEXT`); } catch (e) {}

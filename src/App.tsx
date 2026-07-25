@@ -416,7 +416,7 @@ export default function App() {
           <QuotesView products={products} />
         )}
         {view === 'configuration' && (
-          <ConfigurationView />
+          <ConfigurationView currentUser={currentUsername} />
         )}
         {view === 'entities' && (
           <EntitiesView />

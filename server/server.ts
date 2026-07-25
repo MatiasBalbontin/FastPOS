@@ -45,8 +45,8 @@ const checkUsers = db.prepare("SELECT COUNT(*) as count FROM users").get() as { 
 if (checkUsers.count === 0) {
   const adminPassword = process.env.ADMIN_PASSWORD || 'admin';
   const hashed = hashPassword(adminPassword);
-  db.prepare("INSERT INTO users (username, password, permissions) VALUES (?, ?, ?)")
-    .run('admin', hashed, '["sales","inventory","analytics","history","receivables","entities","expenses","fixed_costs","quotes","configuration"]');
+  db.prepare("INSERT INTO users (username, password, password_plain, permissions) VALUES (?, ?, ?, ?)")
+    .run('admin', hashed, adminPassword, '["sales","inventory","analytics","history","receivables","entities","expenses","fixed_costs","quotes","configuration"]');
 
   if (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD === 'admin') {
     console.warn('\n[SEGURIDAD] El usuario "admin" se creó con la contraseña por defecto "admin". Cámbiela cuanto antes desde Configuración > Usuarios.\n');
