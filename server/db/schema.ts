@@ -141,6 +141,16 @@ export function initializeSchema() {
       FOREIGN KEY (batch_id) REFERENCES batches(id)
     );
 
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER,
+      username TEXT,
+      action TEXT NOT NULL,
+      details TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_sale_batch_consumptions_sale_id ON sale_batch_consumptions(sale_id);
     CREATE INDEX IF NOT EXISTS idx_sales_created_at ON sales(created_at);
     CREATE INDEX IF NOT EXISTS idx_sales_ticket_id ON sales(ticket_id);
@@ -151,5 +161,7 @@ export function initializeSchema() {
     CREATE INDEX IF NOT EXISTS idx_sales_customer_id ON sales(customer_id);
     CREATE INDEX IF NOT EXISTS idx_cash_shifts_user_id ON cash_shifts(user_id);
     CREATE INDEX IF NOT EXISTS idx_cash_shifts_status ON cash_shifts(status);
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
   `);
 }

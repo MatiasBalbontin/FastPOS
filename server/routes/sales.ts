@@ -4,6 +4,7 @@ import { validateBody, SaleSchema, SaleBulkSchema } from '../middleware/validati
 import { AppError } from '../middleware/errorHandler';
 import { requirePermission } from '../middleware/auth';
 import { Decimal } from 'decimal.js';
+import { logAudit } from '../db/audit';
 
 const router = express.Router();
 
@@ -57,7 +58,11 @@ function requireOpenShift() {
 }
 
 function requireFiarPermission(req: express.Request, method: string) {
-  if (method === 'cuenta_por_cobrar' && !req.session.permissions?.includes('fiar')) {
+  if (
+    method === 'cuenta_por_cobrar' &&
+    req.session.username !== 'admin' &&
+    !req.session.permissions?.includes('fiar')
+  ) {
     throw new AppError('No tiene permisos para realizar ventas al fiado', 403);
   }
 }
@@ -213,6 +218,9 @@ router.post('/void/:ticket_id', (req, res, next) => {
     });
 
     transaction();
+    
+    logAudit(req.session.userId, req.session.username, 'VOID_SALE', { ticket_id });
+
     res.json({ success: true });
   } catch (error: any) {
     next(error);

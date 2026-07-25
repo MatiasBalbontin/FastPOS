@@ -2,6 +2,7 @@ import express from 'express';
 import { db } from '../db/index';
 import { requireAuth, requirePermission } from '../middleware/auth';
 import { validateBody, ShiftOpenSchema, ShiftCloseSchema } from '../middleware/validation';
+import { logAudit } from '../db/audit';
 
 const router = express.Router();
 
@@ -96,6 +97,8 @@ router.post('/open', requirePermission('sales'), validateBody(ShiftOpenSchema), 
       VALUES (?, ?)
     `).run(userId, opening_amount);
 
+    logAudit(userId, req.session.username, 'OPEN_SHIFT', { opening_amount });
+
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (error) {
     next(error);
@@ -128,6 +131,14 @@ router.post('/close', requirePermission('sales'), validateBody(ShiftCloseSchema)
         status = 'closed'
       WHERE id = ?
     `).run(closing_amount_cash, closing_amount_card, expectedCash, expectedCard, shift.id);
+
+    logAudit(req.session.userId, req.session.username, 'CLOSE_SHIFT', {
+      shift_id: shift.id,
+      closing_cash: closing_amount_cash,
+      expected_cash: expectedCash,
+      closing_card: closing_amount_card,
+      expected_card: expectedCard
+    });
 
     // Get closed shift values
     const closed = db.prepare("SELECT * FROM cash_shifts WHERE id = ?").get(shift.id) as any;

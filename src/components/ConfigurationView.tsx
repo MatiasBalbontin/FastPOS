@@ -19,7 +19,7 @@ interface SystemStatus {
 }
 
 export function ConfigurationView() {
-  const [activeTab, setActiveTab] = useState<'company' | 'users' | 'system'>('company');
+  const [activeTab, setActiveTab] = useState<'company' | 'users' | 'system' | 'audit'>('company');
 
   // --- System Updates State ---
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
@@ -27,6 +27,10 @@ export function ConfigurationView() {
   const [updatingSystem, setUpdatingSystem] = useState(false);
   const [updateLogs, setUpdateLogs] = useState<string[]>([]);
   const [showConfirmForceUpdate, setShowConfirmForceUpdate] = useState(false);
+
+  // --- Audit Logs State ---
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [loadingAudit, setLoadingAudit] = useState(false);
 
   // --- Company Config State ---
   const [config, setConfig] = useState({
@@ -36,7 +40,8 @@ export function ConfigurationView() {
     company_phone: '',
     company_email: '',
     company_bank_details: '',
-    company_logo: ''
+    company_logo: '',
+    timezone_offset: 'localtime'
   });
   const [loadingCompany, setLoadingCompany] = useState(true);
 
@@ -195,6 +200,22 @@ export function ConfigurationView() {
     }
   };
 
+  const fetchAuditLogs = async () => {
+    setLoadingAudit(true);
+    try {
+      const res = await fetch('/api/system/audit-logs');
+      if (res.ok) {
+        setAuditLogs(await res.json());
+      } else {
+        toast.error("Error al cargar historial de auditoría");
+      }
+    } catch {
+      toast.error("Error de conexión al cargar auditoría");
+    } finally {
+      setLoadingAudit(false);
+    }
+  };
+
   useEffect(() => {
     fetchConfig();
   }, []);
@@ -204,6 +225,8 @@ export function ConfigurationView() {
       fetchUsers();
     } else if (activeTab === 'system') {
       fetchSystemStatus();
+    } else if (activeTab === 'audit') {
+      fetchAuditLogs();
     }
   }, [activeTab]);
 
@@ -357,6 +380,16 @@ export function ConfigurationView() {
           >
             <Terminal size={14} /> Sistema y Actualizaciones
           </button>
+          <button
+            onClick={() => setActiveTab('audit')}
+            className={`px-4 py-2 text-xs font-bold uppercase rounded-lg transition-all flex items-center gap-1.5 ${
+              activeTab === 'audit'
+                ? 'bg-[var(--primary)] text-white shadow-md'
+                : 'text-gray-500 hover:bg-gray-50'
+            }`}
+          >
+            <Shield size={14} /> Registro de Auditoría
+          </button>
         </div>
       </div>
 
@@ -410,6 +443,20 @@ export function ConfigurationView() {
                 onChange={e => setConfig({ ...config, company_email: e.target.value })}
                 className="w-full bg-gray-50 border border-[var(--line)] p-3 text-sm focus:bg-white rounded-xl focus:outline-none focus:ring-2 ring-[var(--primary)]/20 font-semibold"
               />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Zona Horaria (Desfase de Reportes)</label>
+              <select
+                value={config.timezone_offset || 'localtime'}
+                onChange={e => setConfig({ ...config, timezone_offset: e.target.value })}
+                className="w-full bg-gray-50 border border-[var(--line)] p-3 text-sm focus:bg-white rounded-xl focus:outline-none focus:ring-2 ring-[var(--primary)]/20 font-semibold cursor-pointer"
+              >
+                <option value="localtime">Hora del Servidor (Localtime)</option>
+                <option value="0 hours">UTC / GMT (Sin Desfase)</option>
+                <option value="-03:00">UTC-3 (Chile Verano / Argentina / Uruguay)</option>
+                <option value="-04:00">UTC-4 (Chile Invierno / Bolivia / Paraguay / Venezuela)</option>
+                <option value="-05:00">UTC-5 (Perú / Colombia / Ecuador)</option>
+              </select>
             </div>
             <div className="col-span-2">
               <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Datos Bancarios para Transferencia (Pie de Página)</label>
@@ -659,6 +706,56 @@ export function ConfigurationView() {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'audit' && (
+        <div className="bg-white p-8 rounded-2xl border border-[var(--line)] shadow-sm space-y-6 animate-in fade-in duration-200">
+          <div className="flex justify-between items-center border-b border-[var(--line)] pb-4">
+            <div>
+              <h3 className="text-xl font-bold uppercase tracking-wide">Registro de Auditoría (Audit Logs)</h3>
+              <p className="text-xs text-gray-500 mt-1">Historial detallado de operaciones críticas realizadas en el sistema.</p>
+            </div>
+            <button
+              onClick={fetchAuditLogs}
+              disabled={loadingAudit}
+              className="border border-[var(--line)] bg-gray-50 hover:bg-gray-100 disabled:opacity-50 p-2.5 rounded-xl text-xs font-bold uppercase flex items-center gap-1.5 transition-all"
+            >
+              <RefreshCw size={14} className={loadingAudit ? "animate-spin" : ""} />
+              Actualizar Registro
+            </button>
+          </div>
+
+          {loadingAudit && auditLogs.length === 0 ? (
+            <div className="p-8 text-center text-gray-500 text-sm italic">Cargando registro de auditoría...</div>
+          ) : auditLogs.length === 0 ? (
+            <div className="p-8 text-center text-gray-500 text-sm italic">No se han registrado eventos de auditoría aún.</div>
+          ) : (
+            <div className="border border-[var(--line)] rounded-xl overflow-hidden">
+              <div className="grid grid-cols-[1.5fr_1fr_1.5fr_3fr] bg-gray-50 p-4 border-b border-[var(--line)] text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                <div>Fecha</div>
+                <div>Operador</div>
+                <div>Acción</div>
+                <div>Detalles</div>
+              </div>
+              <div className="divide-y divide-[var(--line)] max-h-[500px] overflow-y-auto font-medium">
+                {auditLogs.map((log: any) => (
+                  <div key={log.id} className="grid grid-cols-[1.5fr_1fr_1.5fr_3fr] p-4 text-xs items-start hover:bg-gray-50/40">
+                    <div className="font-mono text-gray-500">{new Date(log.created_at).toLocaleString()}</div>
+                    <div className="font-bold text-[var(--ink)] uppercase tracking-wide">{log.username || 'Sistema'}</div>
+                    <div>
+                      <span className="bg-slate-100 text-slate-700 text-[9px] font-bold uppercase px-2 py-0.5 rounded-full border border-slate-200">
+                        {log.action}
+                      </span>
+                    </div>
+                    <div className="font-mono text-gray-600 break-all whitespace-pre-wrap leading-relaxed pr-2">
+                      {log.details ? JSON.stringify(log.details, null, 2) : '—'}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

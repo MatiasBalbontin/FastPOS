@@ -2,6 +2,7 @@ import express from 'express';
 import { db } from '../db/index';
 import { validateBody, ExpenseSchema } from '../middleware/validation';
 import { requirePermission } from '../middleware/auth';
+import { logAudit } from '../db/audit';
 
 const router = express.Router();
 
@@ -25,6 +26,9 @@ router.post('/', validateBody(ExpenseSchema), (req, res, next) => {
       INSERT INTO expenses (description, amount, method)
       VALUES (?, ?, ?)
     `).run(description.toUpperCase(), amount, method);
+    
+    logAudit(req.session.userId, req.session.username, 'ADD_EXPENSE', { description, amount, method });
+    
     res.json({ success: true });
   } catch (error: any) {
     next(error);
@@ -36,6 +40,7 @@ router.post('/void/:id', (req, res, next) => {
   const { id } = req.params;
   try {
     db.prepare("UPDATE expenses SET status = 'voided' WHERE id = ?").run(id);
+    logAudit(req.session.userId, req.session.username, 'VOID_EXPENSE', { id });
     res.json({ success: true });
   } catch (error: any) {
     next(error);

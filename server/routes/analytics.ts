@@ -10,17 +10,22 @@ router.use(requirePermission('analytics'));
 router.get('/', (req, res, next) => {
   const { period = 'month', startDate, endDate } = req.query;
 
+  // Get configured timezone
+  const tzSetting = db.prepare("SELECT value FROM company_settings WHERE key = 'timezone_offset'").get() as { value: string } | undefined;
+  const tz = tzSetting?.value || 'localtime';
+
   let dateFilter = "";
   let params: any[] = [];
 
   if (startDate && endDate) {
-    dateFilter = "datetime(created_at) BETWEEN datetime(?) AND datetime(?)";
-    params = [startDate, endDate];
+    dateFilter = "datetime(created_at, ?) BETWEEN datetime(?) AND datetime(?)";
+    params = [tz, startDate, endDate];
   } else {
     let interval = "'-30 days'";
     if (period === 'day') interval = "'-1 day'";
     if (period === 'week') interval = "'-7 days'";
-    dateFilter = `created_at >= datetime('now', ${interval})`;
+    dateFilter = `datetime(created_at, ?) >= datetime('now', ${interval}, ?)`;
+    params = [tz, tz];
   }
 
   try {

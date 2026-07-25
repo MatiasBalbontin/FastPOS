@@ -30,4 +30,11 @@ export function runMigrations() {
   try {
     db.exec(`ALTER TABLE expenses ADD COLUMN status TEXT DEFAULT 'completed'`);
   } catch (e) {}
+
+  try {
+    const hasTimezone = db.prepare("SELECT 1 FROM company_settings WHERE key = 'timezone_offset'").get();
+    if (!hasTimezone) {
+      db.prepare("INSERT INTO company_settings (key, value) VALUES ('timezone_offset', 'localtime')").run();
+    }
+  } catch (e) {}
 }

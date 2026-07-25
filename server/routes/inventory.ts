@@ -1,6 +1,7 @@
 import express from 'express';
 import { db } from '../db/index';
 import { requirePermission } from '../middleware/auth';
+import { logAudit } from '../db/audit';
 
 const router = express.Router();
 
@@ -47,6 +48,9 @@ router.post('/products/bulk', requirePermission('inventory'), (req, res, next) =
       }
     });
     transaction();
+
+    logAudit(req.session.userId, req.session.username, 'BULK_IMPORT_PRODUCTS', { count: importData.length });
+
     res.json({ success: true });
   } catch (error: any) {
     next(error);

@@ -3,6 +3,7 @@ import { db } from '../db/index';
 import { validateBody, ProductSchema, ProductUpdateSchema } from '../middleware/validation';
 import { AppError } from '../middleware/errorHandler';
 import { requirePermission } from '../middleware/auth';
+import { logAudit } from '../db/audit';
 
 const router = express.Router();
 
@@ -79,6 +80,15 @@ router.post('/', validateBody(ProductSchema), (req, res, next) => {
       }
     });
     transaction();
+    
+    logAudit(req.session.userId, req.session.username, 'CREATE_OR_UPDATE_PRODUCT', {
+      id: cleanId,
+      name: cleanName,
+      sale_price: numSalePrice,
+      initial_stock: numInitialStock,
+      cost: numCost
+    });
+
     res.json({ success: true });
   } catch (err) {
     next(err);
@@ -131,6 +141,15 @@ router.put('/:id', requirePermission('inventory'), validateBody(ProductUpdateSch
       }
     });
     transaction();
+
+    logAudit(req.session.userId, req.session.username, 'UPDATE_PRODUCT', {
+      id,
+      name,
+      sale_price,
+      cost,
+      new_stock: req.body.new_stock
+    });
+
     res.json({ success: true });
   } catch (err) {
     next(err);
@@ -141,6 +160,7 @@ router.put('/:id', requirePermission('inventory'), validateBody(ProductUpdateSch
 router.delete('/:id', requirePermission('inventory'), (req, res, next) => {
   try {
     db.prepare('UPDATE products SET active = 0 WHERE id = ?').run(req.params.id);
+    logAudit(req.session.userId, req.session.username, 'DELETE_PRODUCT', { id: req.params.id });
     res.json({ success: true });
   } catch (err) {
     next(err);
@@ -151,6 +171,7 @@ router.delete('/:id', requirePermission('inventory'), (req, res, next) => {
 router.post('/:id/restore', requirePermission('inventory'), (req, res, next) => {
   try {
     db.prepare('UPDATE products SET active = 1 WHERE id = ?').run(req.params.id);
+    logAudit(req.session.userId, req.session.username, 'RESTORE_PRODUCT', { id: req.params.id });
     res.json({ success: true });
   } catch (err) {
     next(err);

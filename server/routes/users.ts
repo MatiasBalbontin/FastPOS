@@ -4,6 +4,7 @@ import { hashPassword, requirePermission } from '../middleware/auth';
 import { z } from 'zod';
 import { validateBody } from '../middleware/validation';
 import { AppError } from '../middleware/errorHandler';
+import { logAudit } from '../db/audit';
 
 const router = express.Router();
 
@@ -51,6 +52,8 @@ router.post('/', validateBody(CreateUserSchema), (req, res, next) => {
     db.prepare('INSERT INTO users (username, password, permissions) VALUES (?, ?, ?)')
       .run(username, hashed, serializedPermissions);
 
+    logAudit(req.session.userId, req.session.username, 'CREATE_USER', { target_username: username, permissions });
+
     res.json({ success: true });
   } catch (err) {
     next(err);
@@ -92,6 +95,14 @@ router.put('/:id', validateBody(UpdateUserSchema), (req, res, next) => {
     });
 
     transaction();
+
+    logAudit(req.session.userId, req.session.username, 'UPDATE_USER', {
+      target_username: user.username,
+      permissionsChanged: permissions !== undefined,
+      passwordChanged: !!password,
+      activeChanged: active !== undefined ? (active === 1 ? 'activado' : 'desactivado') : undefined
+    });
+
     res.json({ success: true });
   } catch (err) {
     next(err);
@@ -112,6 +123,7 @@ router.delete('/:id', (req, res, next) => {
     }
 
     db.prepare('DELETE FROM users WHERE id = ?').run(id);
+    logAudit(req.session.userId, req.session.username, 'DELETE_USER', { target_username: user.username });
     res.json({ success: true });
   } catch (err) {
     next(err);

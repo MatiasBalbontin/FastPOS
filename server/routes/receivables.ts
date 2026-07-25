@@ -1,6 +1,7 @@
 import express from 'express';
 import { db } from '../db/index';
 import { requirePermission } from '../middleware/auth';
+import { logAudit } from '../db/audit';
 
 const router = express.Router();
 
@@ -98,6 +99,9 @@ router.post('/:customer_id/pay', (req, res, next) => {
       INSERT INTO customer_payments (customer_id, amount, method)
       VALUES (?, ?, ?)
     `).run(customer_id, numAmount, method);
+    
+    logAudit(req.session.userId, req.session.username, 'ADD_PAYMENT', { customer_id, amount: numAmount, method });
+    
     res.json({ success: true });
   } catch (error: any) {
     next(error);
@@ -109,6 +113,7 @@ router.post('/pay/void/:id', (req, res, next) => {
   const { id } = req.params;
   try {
     db.prepare("UPDATE customer_payments SET status = 'voided' WHERE id = ?").run(id);
+    logAudit(req.session.userId, req.session.username, 'VOID_PAYMENT', { id });
     res.json({ success: true });
   } catch (error: any) {
     next(error);

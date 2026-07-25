@@ -880,7 +880,7 @@ export function SalesView({ searchInputRef, onSale, products, userPermissions, c
           total={total}
           onClose={() => setIsPaymentModalOpen(false)}
           onConfirm={handleFinishSale}
-          canDeferPayment={userPermissions.includes('fiar')}
+          canDeferPayment={currentUser === 'admin' || userPermissions.includes('fiar')}
         />
       )}
 

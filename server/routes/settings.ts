@@ -1,6 +1,7 @@
 import express from 'express';
 import { db } from '../db/index';
 import { requirePermission } from '../middleware/auth';
+import { logAudit } from '../db/audit';
 
 const router = express.Router();
 
@@ -33,6 +34,9 @@ router.post('/', requirePermission('configuration'), (req, res, next) => {
       }
     });
     transaction();
+    
+    logAudit(req.session.userId, req.session.username, 'UPDATE_SETTINGS', { keys_updated: Object.keys(settings) });
+    
     res.json({ success: true });
   } catch (error: any) {
     next(error);

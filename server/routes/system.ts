@@ -3,6 +3,7 @@ import { execFile } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { requirePermission } from '../middleware/auth';
+import { db } from '../db/index';
 
 const router = express.Router();
 router.use(requirePermission('configuration'));
@@ -182,6 +183,26 @@ router.post('/update', async (req, res, next) => {
     logs.push('Reiniciando el servidor para aplicar la actualización...');
     res.json({ success: true, logs, restarting: true });
     scheduleRestart();
+  } catch (error: any) {
+    next(error);
+  }
+});
+
+// GET /api/system/audit-logs
+router.get('/audit-logs', (req, res, next) => {
+  try {
+    const logs = db.prepare(`
+      SELECT * FROM audit_logs
+      ORDER BY created_at DESC
+      LIMIT 500
+    `).all() as any[];
+
+    const formatted = logs.map(l => ({
+      ...l,
+      details: l.details ? JSON.parse(l.details) : null
+    }));
+
+    res.json(formatted);
   } catch (error: any) {
     next(error);
   }

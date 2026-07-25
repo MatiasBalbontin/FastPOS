@@ -8,6 +8,10 @@ const router = express.Router();
 router.get('/', requirePermission('history'), (req, res, next) => {
   const { startDate, endDate } = req.query;
   try {
+    // Get configured timezone
+    const tzSetting = db.prepare("SELECT value FROM company_settings WHERE key = 'timezone_offset'").get() as { value: string } | undefined;
+    const tz = tzSetting?.value || 'localtime';
+
     let salesDateFilter = '';
     let paymentsDateFilter = '';
     let expensesDateFilter = '';
@@ -16,12 +20,12 @@ router.get('/', requirePermission('history'), (req, res, next) => {
     let params3: any[] = [];
 
     if (startDate && endDate) {
-      salesDateFilter = "AND s.created_at BETWEEN ? AND ?";
-      paymentsDateFilter = "AND p.created_at BETWEEN ? AND ?";
-      expensesDateFilter = "AND e.created_at BETWEEN ? AND ?";
-      params = [startDate, endDate];
-      params2 = [startDate, endDate];
-      params3 = [startDate, endDate];
+      salesDateFilter = "AND datetime(s.created_at, ?) BETWEEN datetime(?) AND datetime(?)";
+      paymentsDateFilter = "AND datetime(p.created_at, ?) BETWEEN datetime(?) AND datetime(?)";
+      expensesDateFilter = "AND datetime(e.created_at, ?) BETWEEN datetime(?) AND datetime(?)";
+      params = [tz, startDate, endDate];
+      params2 = [tz, startDate, endDate];
+      params3 = [tz, startDate, endDate];
     }
 
     const tickets = db.prepare(`
