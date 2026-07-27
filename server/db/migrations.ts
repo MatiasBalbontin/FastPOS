@@ -28,6 +28,13 @@ export function runMigrations() {
     db.exec(`ALTER TABLE users ADD COLUMN password_plain TEXT`);
   } catch (e) {}
 
+  // Cash shifts move from one shared register to one-per-operator: sales,
+  // customer payments and expenses now record which shift they belong to,
+  // so each operator's arqueo only reflects their own cash movements.
+  try { db.exec(`ALTER TABLE sales ADD COLUMN shift_id INTEGER`); } catch (e) {}
+  try { db.exec(`ALTER TABLE customer_payments ADD COLUMN shift_id INTEGER`); } catch (e) {}
+  try { db.exec(`ALTER TABLE expenses ADD COLUMN shift_id INTEGER`); } catch (e) {}
+
   try { db.exec(`ALTER TABLE customers ADD COLUMN type TEXT DEFAULT 'cliente'`); } catch (e) {}
   try { db.exec(`ALTER TABLE customers ADD COLUMN address TEXT`); } catch (e) {}
   try { db.exec(`ALTER TABLE customers ADD COLUMN contact TEXT`); } catch (e) {}

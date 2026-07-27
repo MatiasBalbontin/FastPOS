@@ -30,6 +30,7 @@ export function initializeSchema() {
       payment_method TEXT DEFAULT 'cash',
       status TEXT DEFAULT 'completed',
       customer_id INTEGER,
+      shift_id INTEGER,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (product_id) REFERENCES products(id)
     );
@@ -53,6 +54,7 @@ export function initializeSchema() {
       amount REAL NOT NULL,
       method TEXT NOT NULL,
       status TEXT DEFAULT 'completed',
+      shift_id INTEGER,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (customer_id) REFERENCES customers(id)
     );
@@ -63,6 +65,7 @@ export function initializeSchema() {
       amount REAL NOT NULL,
       method TEXT NOT NULL,
       status TEXT DEFAULT 'completed',
+      shift_id INTEGER,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 

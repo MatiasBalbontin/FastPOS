@@ -2,6 +2,7 @@ import express from 'express';
 import { db } from '../db/index';
 import { requirePermission } from '../middleware/auth';
 import { logAudit } from '../db/audit';
+import { getOpenShiftId } from '../db/shifts';
 
 const router = express.Router();
 
@@ -95,10 +96,11 @@ router.post('/:customer_id/pay', (req, res, next) => {
       throw new Error(`El abono ($${numAmount.toLocaleString()}) no puede superar la deuda pendiente ($${debtData.debt.toLocaleString()})`);
     }
 
+    const shiftId = getOpenShiftId(req.session.userId);
     db.prepare(`
-      INSERT INTO customer_payments (customer_id, amount, method)
-      VALUES (?, ?, ?)
-    `).run(customer_id, numAmount, method);
+      INSERT INTO customer_payments (customer_id, amount, method, shift_id)
+      VALUES (?, ?, ?, ?)
+    `).run(customer_id, numAmount, method, shiftId);
     
     logAudit(req.session.userId, req.session.username, 'ADD_PAYMENT', { customer_id, amount: numAmount, method });
     

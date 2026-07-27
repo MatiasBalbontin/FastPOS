@@ -3,6 +3,7 @@ import { db } from '../db/index';
 import { validateBody, ExpenseSchema } from '../middleware/validation';
 import { requirePermission } from '../middleware/auth';
 import { logAudit } from '../db/audit';
+import { getOpenShiftId } from '../db/shifts';
 
 const router = express.Router();
 
@@ -22,10 +23,11 @@ router.get('/', (req, res, next) => {
 router.post('/', validateBody(ExpenseSchema), (req, res, next) => {
   const { description, amount, method } = req.body;
   try {
+    const shiftId = getOpenShiftId(req.session.userId);
     db.prepare(`
-      INSERT INTO expenses (description, amount, method)
-      VALUES (?, ?, ?)
-    `).run(description.toUpperCase(), amount, method);
+      INSERT INTO expenses (description, amount, method, shift_id)
+      VALUES (?, ?, ?, ?)
+    `).run(description.toUpperCase(), amount, method, shiftId);
     
     logAudit(req.session.userId, req.session.username, 'ADD_EXPENSE', { description, amount, method });
     

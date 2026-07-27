@@ -12,3 +12,4 @@ coverage/
 inventory.db
 fastpos-landing.html
 landing-assets/
+.gstack/

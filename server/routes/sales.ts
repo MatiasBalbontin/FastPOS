@@ -5,6 +5,7 @@ import { AppError } from '../middleware/errorHandler';
 import { requirePermission } from '../middleware/auth';
 import { Decimal } from 'decimal.js';
 import { logAudit } from '../db/audit';
+import { getOpenShiftId } from '../db/shifts';
 
 const router = express.Router();
 
@@ -50,11 +51,14 @@ function recordConsumptions(sale_id: number | bigint, consumptions: { batch_id: 
   }
 }
 
-function requireOpenShift() {
-  const activeShift = db.prepare("SELECT id FROM cash_shifts WHERE status = 'open'").get();
-  if (!activeShift) {
-    throw new AppError('Debe iniciar la caja antes de registrar ventas', 400);
+// Cash shifts are per-operator now: this checks the CALLING user's own shift,
+// not whether some shift exists anywhere in the system.
+function requireOpenShift(req: express.Request): number {
+  const shiftId = getOpenShiftId(req.session.userId);
+  if (!shiftId) {
+    throw new AppError('Debe iniciar su caja antes de registrar ventas', 400);
   }
+  return shiftId;
 }
 
 function requireFiarPermission(req: express.Request, method: string) {
@@ -72,7 +76,7 @@ router.post('/', validateBody(SaleSchema), (req, res, next) => {
   const { product_id, quantity, payment_method = 'cash', customer_id } = req.body;
 
   try {
-    requireOpenShift();
+    const shiftId = requireOpenShift(req);
     requireFiarPermission(req, payment_method);
 
     const ticket_id = `TKT-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -91,9 +95,9 @@ router.post('/', validateBody(SaleSchema), (req, res, next) => {
       const parsedCustomerId = customer_id ? parseInt(String(customer_id), 10) : null;
 
       const result = db.prepare(`
-        INSERT INTO sales (product_id, quantity, sale_price, total_cost, ticket_id, payment_method, status, customer_id)
-        VALUES (?, ?, ?, ?, ?, ?, 'completed', ?)
-      `).run(product_id, quantity, product.sale_price, totalCost, ticket_id, payment_method, parsedCustomerId);
+        INSERT INTO sales (product_id, quantity, sale_price, total_cost, ticket_id, payment_method, status, customer_id, shift_id)
+        VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?)
+      `).run(product_id, quantity, product.sale_price, totalCost, ticket_id, payment_method, parsedCustomerId, shiftId);
 
       recordConsumptions(result.lastInsertRowid, consumptions);
 
@@ -120,9 +124,10 @@ router.post('/bulk', validateBody(SaleBulkSchema), (req, res, next) => {
   const { items, method = 'cash', customer_id } = req.body;
   const ticket_id = `TKT-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
+  let shiftId: number;
   try {
     requireFiarPermission(req, method);
-    requireOpenShift();
+    shiftId = requireOpenShift(req);
   } catch (error: any) {
     return next(error);
   }
@@ -146,9 +151,9 @@ router.post('/bulk', validateBody(SaleBulkSchema), (req, res, next) => {
         const parsedCustomerId = customer_id ? parseInt(String(customer_id), 10) : null;
 
         const insertResult = db.prepare(`
-          INSERT INTO sales (product_id, quantity, sale_price, total_cost, ticket_id, payment_method, status, customer_id)
-          VALUES (?, ?, ?, ?, ?, ?, 'completed', ?)
-        `).run(product_id, quantity, product.sale_price, totalCost, ticket_id, method, parsedCustomerId);
+          INSERT INTO sales (product_id, quantity, sale_price, total_cost, ticket_id, payment_method, status, customer_id, shift_id)
+          VALUES (?, ?, ?, ?, ?, ?, 'completed', ?, ?)
+        `).run(product_id, quantity, product.sale_price, totalCost, ticket_id, method, parsedCustomerId, shiftId);
 
         recordConsumptions(insertResult.lastInsertRowid, consumptions);
 

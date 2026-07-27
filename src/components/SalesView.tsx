@@ -476,6 +476,7 @@ export function SalesView({ searchInputRef, onSale, products, userPermissions, c
       if (res.ok) {
         const data = await res.json();
         setSummaryReport(data);
+        setActiveShift(null);
         setClosingModalOpen(false);
         setClosingCash('');
         setClosingCard('');
