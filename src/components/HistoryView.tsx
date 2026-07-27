@@ -131,6 +131,16 @@ export function HistoryView({ onRefresh }: HistoryViewProps) {
                 <div className={cn("text-2xl font-bold mt-1", item.type === 'payment' ? "text-green-600" : item.type === 'expense' ? "text-red-600" : "text-[var(--ink)]")}>
                   {item.type === 'payment' ? '+' : item.type === 'expense' ? '-' : ''}${item.total_amount?.toLocaleString() || 0}
                 </div>
+                {item.type === 'sale' && item.total_amount > 0 && (() => {
+                  const netAmount = item.total_amount / 1.19;
+                  const netCost = (item.total_cost || 0) / 1.19;
+                  const netMargin = netAmount > 0 ? ((netAmount - netCost) / netAmount) * 100 : 0;
+                  return (
+                    <div className="text-[10px] font-bold uppercase text-gray-400 mt-1">
+                      Margen: <span className={netMargin >= 0 ? "text-green-600" : "text-red-600"}>{Math.round(netMargin)}%</span>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 

@@ -363,7 +363,7 @@ export function InventoryView({
       )}
 
       <div className="border border-[var(--line)] bg-white rounded-2xl overflow-hidden shadow-xl">
-        <div className="grid grid-cols-[90px_minmax(150px,3fr)_1fr_70px_80px_80px_90px_90px_1.2fr_60px] col-header bg-gray-50/50">
+        <div className="grid grid-cols-[90px_minmax(150px,3fr)_1fr_70px_80px_80px_90px_90px_70px_1.2fr_60px] col-header bg-gray-50/50">
           <div className="truncate">ID</div>
           <div className="truncate">PRODUCTO</div>
           <div className="truncate">CATEGORÍA</div>
@@ -377,6 +377,7 @@ export function InventoryView({
             </button>
           </div>
           <div className="text-right truncate">P_VENTA</div>
+          <div className="text-right truncate">MARGEN</div>
           <div className="text-center truncate">ESTADO</div>
           <div className="text-center truncate">ACCIONES</div>
         </div>
@@ -385,7 +386,7 @@ export function InventoryView({
             const isLowStock = p.total_stock < lowStockThreshold;
             return (
               <div key={p.id} className={cn(
-                "grid grid-cols-[90px_minmax(150px,3fr)_1fr_70px_80px_80px_90px_90px_1.2fr_60px] data-row text-sm items-center hover:bg-gray-50/50 transition-colors",
+                "grid grid-cols-[90px_minmax(150px,3fr)_1fr_70px_80px_80px_90px_90px_70px_1.2fr_60px] data-row text-sm items-center hover:bg-gray-50/50 transition-colors",
                 isLowStock && p.active === 1 && "bg-red-50/30",
                 exactMatch?.id === p.id && "bg-green-50"
               )}>
@@ -410,6 +411,14 @@ export function InventoryView({
                   {showCosts ? `$${(p.cost || 0).toLocaleString()}` : '••••••'}
                 </div>
                 <div className="text-right font-bold text-[var(--primary)]">${p.sale_price.toLocaleString()}</div>
+                <div className="text-right font-bold text-xs">
+                  {showCosts ? (() => {
+                    const netPrice = p.sale_price / 1.19;
+                    const netCost = (p.cost || 0) / 1.19;
+                    const margin = netPrice > 0 ? ((netPrice - netCost) / netPrice) * 100 : 0;
+                    return <span className={margin >= 0 ? "text-green-600" : "text-red-600"}>{Math.round(margin)}%</span>;
+                  })() : '••••'}
+                </div>
                 <div className="flex flex-wrap justify-center items-center gap-1.5 px-2 min-h-[32px]">
                   {p.active === 0 ? (
                     <span className="bg-gray-100 text-gray-500 text-[9px] px-2 py-0.5 font-bold uppercase rounded-full border border-gray-200">Archivado</span>

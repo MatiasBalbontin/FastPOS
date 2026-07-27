@@ -36,6 +36,7 @@ router.get('/', requirePermission('history'), (req, res, next) => {
         s.status,
         s.created_at,
         SUM(s.quantity * s.sale_price) as total_amount,
+        SUM(s.total_cost) as total_cost,
         json_group_array(json_object(
           'name', p.name,
           'quantity', s.quantity,

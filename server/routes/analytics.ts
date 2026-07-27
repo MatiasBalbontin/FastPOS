@@ -123,11 +123,16 @@ router.get('/', (req, res, next) => {
 
     // Sale prices are IVA-inclusive (19%, same convention as QuotesView), so
     // gross sales include tax that was never the business's own revenue.
+    // Product cost is entered gross too (what was actually paid the
+    // supplier, IVA included), so it must be stripped the same way before
+    // comparing it against net sales — otherwise a tax-inclusive cost gets
+    // subtracted from a tax-exclusive revenue and understates the margin.
     const IVA_RATE = 0.19;
     const grossSalesRevenue = summary.total_revenue || 0;
     const netSalesRevenue = grossSalesRevenue / (1 + IVA_RATE);
     const ivaDebito = grossSalesRevenue - netSalesRevenue;
-    const netProfit = netSalesRevenue - (summary.total_cost || 0);
+    const netCost = (summary.total_cost || 0) / (1 + IVA_RATE);
+    const netProfit = netSalesRevenue - netCost;
     const netMargin = netSalesRevenue > 0 ? (netProfit / netSalesRevenue) * 100 : 0;
 
     res.json({

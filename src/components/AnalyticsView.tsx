@@ -199,41 +199,41 @@ export function AnalyticsView({ analytics, startDate, setStartDate, endDate, set
           </div>
 
           <div className="grid grid-cols-4 gap-6">
-            <StatCard label="Ventas Totales Brutas" value={`$${grossRevenue.toLocaleString()}`} />
-            <StatCard label="IVA Débito" value={`$${ivaDebito.toLocaleString()}`} />
-            <StatCard label="Ventas Netas" value={`$${currentRevenue.toLocaleString()}`} />
-            <StatCard label="Utilidad Real (Neta)" value={`$${netProfit.toLocaleString()}`} trend />
+            <StatCard label="Ventas Totales Brutas" value={`$${Math.round(grossRevenue).toLocaleString()}`} />
+            <StatCard label="IVA Débito" value={`$${Math.round(ivaDebito).toLocaleString()}`} />
+            <StatCard label="Ventas Netas" value={`$${Math.round(currentRevenue).toLocaleString()}`} />
+            <StatCard label="Utilidad Real (Neta)" value={`$${Math.round(netProfit).toLocaleString()}`} trend />
           </div>
 
           <div className="grid grid-cols-3 gap-6">
             <StatCard
               label="Margen de Utilidad (Neto)"
-              value={`${netMargin.toFixed(2)}%`}
+              value={`${Math.round(netMargin)}%`}
               highlight={netMargin > 20}
             />
-            <StatCard label="Valor Inventario (Precio Venta)" value={`$${analytics.summary.total_inventory_value_sale?.toLocaleString() || 0}`} />
-            <StatCard label="Valor Inventario (Precio Costo)" value={`$${analytics.summary.total_inventory_value?.toLocaleString() || 0}`} />
+            <StatCard label="Valor Inventario (Precio Venta)" value={`$${Math.round(analytics.summary.total_inventory_value_sale || 0).toLocaleString()}`} />
+            <StatCard label="Valor Inventario (Precio Costo)" value={`$${Math.round(analytics.summary.total_inventory_value || 0).toLocaleString()}`} />
           </div>
 
           <div className="grid grid-cols-3 gap-8">
             <div className="p-6 border border-[var(--line)] bg-white rounded-2xl shadow-sm flex items-center justify-between border-l-4 border-l-green-500">
               <div>
                 <div className="text-[10px] font-bold uppercase text-gray-500 tracking-widest mb-1">Caja Efectivo (Neto)</div>
-                <div className="text-3xl font-mono font-bold text-green-700">${((analytics.summary.cash_revenue || 0) - (analytics.summary.cash_expenses || 0)).toLocaleString()}</div>
+                <div className="text-3xl font-mono font-bold text-green-700">${Math.round((analytics.summary.cash_revenue || 0) - (analytics.summary.cash_expenses || 0)).toLocaleString()}</div>
               </div>
               <Banknote size={32} className="opacity-20 text-green-700" />
             </div>
             <div className="p-6 border border-[var(--line)] bg-white rounded-2xl shadow-sm flex items-center justify-between border-l-4 border-l-blue-500">
               <div>
                 <div className="text-[10px] font-bold uppercase text-gray-500 tracking-widest mb-1">Pagos con Tarjeta (Neto)</div>
-                <div className="text-3xl font-mono font-bold text-blue-700">${((analytics.summary.card_revenue || 0) - (analytics.summary.card_expenses || 0)).toLocaleString()}</div>
+                <div className="text-3xl font-mono font-bold text-blue-700">${Math.round((analytics.summary.card_revenue || 0) - (analytics.summary.card_expenses || 0)).toLocaleString()}</div>
               </div>
               <CreditCard size={32} className="opacity-20 text-blue-700" />
             </div>
             <div className="p-6 border border-[var(--line)] bg-white rounded-2xl shadow-sm flex items-center justify-between border-l-4 border-l-amber-500">
               <div>
                 <div className="text-[10px] font-bold uppercase text-gray-500 tracking-widest mb-1">Por Cobrar (Fiado)</div>
-                <div className="text-3xl font-mono font-bold text-amber-700">${(analytics.summary.total_receivables || 0).toLocaleString()}</div>
+                <div className="text-3xl font-mono font-bold text-amber-700">${Math.round(analytics.summary.total_receivables || 0).toLocaleString()}</div>
               </div>
               <FileMinus size={32} className="opacity-20 text-amber-700" />
             </div>
@@ -243,8 +243,8 @@ export function AnalyticsView({ analytics, startDate, setStartDate, endDate, set
                 <div>
                   <div className="text-[10px] font-bold uppercase text-red-500 tracking-widest mb-1">Descuentos por Gastos Registrados</div>
                   <div className="text-2xl font-mono font-bold text-red-700">
-                    Total Restado: ${analytics.summary.total_expenses?.toLocaleString()} 
-                    <span className="text-sm ml-4 opacity-70">(Efectivo: ${analytics.summary.cash_expenses?.toLocaleString() || 0} | Tarjeta: ${analytics.summary.card_expenses?.toLocaleString() || 0})</span>
+                    Total Restado: ${Math.round(analytics.summary.total_expenses || 0).toLocaleString()}
+                    <span className="text-sm ml-4 opacity-70">(Efectivo: ${Math.round(analytics.summary.cash_expenses || 0).toLocaleString()} | Tarjeta: ${Math.round(analytics.summary.card_expenses || 0).toLocaleString()})</span>
                   </div>
                 </div>
                 <Receipt size={32} className="opacity-20 text-red-700" />
@@ -323,7 +323,7 @@ export function AnalyticsView({ analytics, startDate, setStartDate, endDate, set
                       <div className="absolute bottom-[20%] text-center">
                         <div className="text-[10px] font-bold text-gray-400 uppercase">Recaudación Actual</div>
                         <div className={cn("text-3xl font-bold font-mono", currentRevenue >= breakEven ? "text-green-600" : "text-amber-600")}>
-                          ${currentRevenue.toLocaleString()}
+                          ${Math.round(currentRevenue).toLocaleString()}
                         </div>
                         <div className="w-full h-px bg-gray-100 my-2"></div>
                         <div className="text-[10px] font-bold text-gray-500 uppercase">Punto de Equilibrio</div>
