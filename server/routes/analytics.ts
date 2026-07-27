@@ -110,7 +110,10 @@ router.get('/', (req, res, next) => {
     `).all();
 
     const totalInventoryValue = db.prepare(`
-      SELECT SUM(quantity * cost) as value FROM batches WHERE quantity > 0
+      SELECT SUM(b.quantity * b.cost) as cost_value, SUM(b.quantity * p.sale_price) as sale_value
+      FROM batches b
+      JOIN products p ON b.product_id = p.id
+      WHERE b.quantity > 0
     `).get() as any;
 
     const totalFixedCostsRow = db.prepare(`SELECT SUM(amount) as total FROM fixed_costs`).get() as any;
@@ -118,13 +121,28 @@ router.get('/', (req, res, next) => {
     // show an honest "not configured" state instead of a fabricated target.
     const totalFixedCosts = totalFixedCostsRow.total || null;
 
+    // Sale prices are IVA-inclusive (19%, same convention as QuotesView), so
+    // gross sales include tax that was never the business's own revenue.
+    const IVA_RATE = 0.19;
+    const grossSalesRevenue = summary.total_revenue || 0;
+    const netSalesRevenue = grossSalesRevenue / (1 + IVA_RATE);
+    const ivaDebito = grossSalesRevenue - netSalesRevenue;
+    const netProfit = netSalesRevenue - (summary.total_cost || 0);
+    const netMargin = netSalesRevenue > 0 ? (netProfit / netSalesRevenue) * 100 : 0;
+
     res.json({
       topProducts,
       categoryAnalysis,
       summary: {
         ...summary,
         ...expensesSummary,
-        total_inventory_value: totalInventoryValue.value || 0,
+        gross_sales_revenue: grossSalesRevenue,
+        iva_debito: ivaDebito,
+        net_sales_revenue: netSalesRevenue,
+        net_profit: netProfit,
+        net_margin: netMargin,
+        total_inventory_value: totalInventoryValue.cost_value || 0,
+        total_inventory_value_sale: totalInventoryValue.sale_value || 0,
         total_fixed_costs: totalFixedCosts
       },
       inventoryByFamily

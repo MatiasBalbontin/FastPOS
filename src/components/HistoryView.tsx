@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Banknote, CreditCard, FileText, Download } from 'lucide-react';
 import { toast } from 'sonner';
-import { cn } from '../lib/utils';
+import { cn, parseDbDate } from '../lib/utils';
 import * as XLSX from 'xlsx';
 
 interface HistoryViewProps {
@@ -35,7 +35,7 @@ export function HistoryView({ onRefresh }: HistoryViewProps) {
   const handleExport = async () => {
     setExporting(true);
     try {
-      const res = await fetch('/api/history/export');
+      const res = await fetch(`/api/history/export?startDate=${startDate}T00:00:00&endDate=${endDate}T23:59:59`);
       if (!res.ok) throw new Error();
       const { sales, payments, expenses } = await res.json();
 
@@ -43,9 +43,9 @@ export function HistoryView({ onRefresh }: HistoryViewProps) {
       XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(sales), "Ventas");
       XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(payments), "Abonos");
       XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(expenses), "Gastos");
-      XLSX.writeFile(workbook, `fastpos_historial_completo_${new Date().toISOString().split('T')[0]}.xlsx`);
+      XLSX.writeFile(workbook, `fastpos_historial_${startDate}_a_${endDate}.xlsx`);
 
-      toast.success("Exportación generada. Incluye TODOS los registros (completados y anulados) para que puedas filtrar y cuadrar tú mismo en Excel.");
+      toast.success(`Exportación generada para el rango ${startDate} a ${endDate}. Incluye anulados con su estado para que puedas filtrar y cuadrar tú mismo en Excel.`);
     } catch {
       toast.error("Error al exportar el historial");
     } finally {
@@ -80,7 +80,7 @@ export function HistoryView({ onRefresh }: HistoryViewProps) {
           <button
             onClick={handleExport}
             disabled={exporting}
-            title="Exporta TODAS las ventas, abonos y gastos (incluyendo anulados) a un archivo Excel para cuadrar manualmente"
+            title="Exporta ventas, abonos y gastos del rango de fechas filtrado (incluyendo anulados) a un archivo Excel para cuadrar manualmente"
             className="bg-white border border-[var(--line)] hover:bg-gray-50 text-[var(--ink)] font-bold uppercase tracking-wider text-xs px-5 py-3 rounded-xl transition-all shadow-sm h-[42px] flex items-center gap-2 disabled:opacity-50"
           >
             <Download size={14} />
@@ -116,7 +116,7 @@ export function HistoryView({ onRefresh }: HistoryViewProps) {
               <div>
                 <div className="text-xs font-mono text-gray-400 mb-1">{item.type === 'expense' ? `Gasto #${item.id}` : item.id}</div>
                 <div className="font-bold flex items-center gap-2 uppercase">
-                  {new Date(item.created_at).toLocaleString()}
+                  {parseDbDate(item.created_at).toLocaleString()}
                   {item.method === 'cash' ? <Banknote size={14} className="text-green-600"/> : item.method === 'card' ? <CreditCard size={14} className="text-blue-600"/> : <FileText size={14} className="text-amber-600"/>}
                   <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
                     {item.type === 'sale' ? (item.method === 'cuenta_por_cobrar' ? 'Venta Fiada' : 'Venta') : item.type === 'payment' ? 'Abono Recibido' : 'Gasto Registrado'}

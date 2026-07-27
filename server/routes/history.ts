@@ -101,7 +101,27 @@ router.get('/', requirePermission('history'), (req, res, next) => {
 // Unlike GET /, this returns every sale line item (not grouped by ticket), includes
 // voided records with their status, and is not capped at 100 rows.
 router.get('/export', requirePermission('history'), (req, res, next) => {
+  const { startDate, endDate } = req.query;
   try {
+    const tzSetting = db.prepare("SELECT value FROM company_settings WHERE key = 'timezone_offset'").get() as { value: string } | undefined;
+    const tz = tzSetting?.value || 'localtime';
+
+    let salesDateFilter = '';
+    let paymentsDateFilter = '';
+    let expensesDateFilter = '';
+    let salesParams: any[] = [];
+    let paymentsParams: any[] = [];
+    let expensesParams: any[] = [];
+
+    if (startDate && endDate) {
+      salesDateFilter = "WHERE datetime(s.created_at, ?) BETWEEN datetime(?) AND datetime(?)";
+      paymentsDateFilter = "WHERE datetime(p.created_at, ?) BETWEEN datetime(?) AND datetime(?)";
+      expensesDateFilter = "WHERE datetime(created_at, ?) BETWEEN datetime(?) AND datetime(?)";
+      salesParams = [tz, startDate, endDate];
+      paymentsParams = [tz, startDate, endDate];
+      expensesParams = [tz, startDate, endDate];
+    }
+
     const sales = db.prepare(`
       SELECT
         s.id,
@@ -118,8 +138,9 @@ router.get('/export', requirePermission('history'), (req, res, next) => {
       FROM sales s
       JOIN products p ON s.product_id = p.id
       LEFT JOIN customers c ON s.customer_id = c.id
+      ${salesDateFilter}
       ORDER BY s.created_at ASC
-    `).all();
+    `).all(...salesParams);
 
     const payments = db.prepare(`
       SELECT
@@ -131,14 +152,16 @@ router.get('/export', requirePermission('history'), (req, res, next) => {
         c.first_name || ' ' || c.last_name as customer_name
       FROM customer_payments p
       JOIN customers c ON p.customer_id = c.id
+      ${paymentsDateFilter}
       ORDER BY p.created_at ASC
-    `).all();
+    `).all(...paymentsParams);
 
     const expenses = db.prepare(`
       SELECT id, created_at, description, amount, method, status
       FROM expenses
+      ${expensesDateFilter}
       ORDER BY created_at ASC
-    `).all();
+    `).all(...expensesParams);
 
     res.json({ sales, payments, expenses });
   } catch (error: any) {

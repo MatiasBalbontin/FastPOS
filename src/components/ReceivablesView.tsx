@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CreditCard } from 'lucide-react';
 import { toast } from 'sonner';
-import { cn } from '../lib/utils';
+import { cn, parseDbDate } from '../lib/utils';
 
 interface ReceivablesViewProps {
   onRefresh: () => void;
@@ -129,7 +129,7 @@ export function ReceivablesView({ onRefresh }: ReceivablesViewProps) {
                        <div className={cn("text-xs font-bold uppercase mb-1", item.type === 'debt' ? "text-red-700" : "text-green-700")}>
                          {item.type === 'debt' ? `Venta Fiada (Ticket #${item.ticket_id})` : `Abono Realizado (${item.method === 'cash' ? 'Efectivo' : 'Tarjeta'})`}
                        </div>
-                       <div className="text-xs text-gray-500 font-mono">{new Date(item.date).toLocaleString()}</div>
+                       <div className="text-xs text-gray-500 font-mono">{parseDbDate(item.date).toLocaleString()}</div>
                      </div>
                      <div className={cn("font-bold font-mono text-lg", item.type === 'debt' ? "text-red-600" : "text-green-600")}>
                        {item.type === 'debt' ? '-' : '+'}${item.amount.toLocaleString()}

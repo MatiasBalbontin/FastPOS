@@ -17,7 +17,7 @@ import {
   CheckCircle,
   FileText
 } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn, parseDbDate } from '../lib/utils';
 import { toast } from 'sonner';
 import { Product } from './Types';
 
@@ -419,7 +419,7 @@ export function SalesView({ searchInputRef, onSale, products, userPermissions, c
   useEffect(() => {
     if (!activeShift?.shift?.opening_time) return;
     const updateTimer = () => {
-      const diffMs = new Date().getTime() - new Date(activeShift.shift.opening_time).getTime();
+      const diffMs = new Date().getTime() - parseDbDate(activeShift.shift.opening_time).getTime();
       const totalSeconds = Math.max(0, Math.floor(diffMs / 1000));
       const totalMinutes = Math.floor(totalSeconds / 60);
       const hrs = Math.floor(totalMinutes / 60);
@@ -660,8 +660,8 @@ export function SalesView({ searchInputRef, onSale, products, userPermissions, c
 
               <div className="p-6 space-y-6 overflow-y-auto flex-1">
                 <div className="grid grid-cols-2 gap-4 text-xs font-semibold bg-gray-50 p-4 rounded-2xl border border-[var(--line)]">
-                  <div>Apertura: {new Date(summaryReport.shift.opening_time).toLocaleString()}</div>
-                  <div>Cierre: {new Date(summaryReport.shift.closing_time).toLocaleString()}</div>
+                  <div>Apertura: {parseDbDate(summaryReport.shift.opening_time).toLocaleString()}</div>
+                  <div>Cierre: {parseDbDate(summaryReport.shift.closing_time).toLocaleString()}</div>
                   <div>Monto Inicial: ${summaryReport.shift.opening_amount.toLocaleString()}</div>
                   <div className="text-blue-700 font-bold">Ventas al fiado: ${summaryReport.totals.sales_receivables.toLocaleString()}</div>
                 </div>

@@ -12,7 +12,7 @@ import {
 import { toast } from 'sonner';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { cn } from '../lib/utils';
+import { cn, parseDbDate } from '../lib/utils';
 import { Product } from './Types';
 
 interface QuotesViewProps {
@@ -523,7 +523,7 @@ export function QuotesView({ products }: QuotesViewProps) {
       doc.setFont("helvetica", "normal");
       doc.text(quote.condition.toUpperCase(), 138, 55);
 
-      const issueDate = new Date(quote.created_at);
+      const issueDate = parseDbDate(quote.created_at);
       const validityVal = parseInt(quote.validity_days, 10) || 30;
       const validDate = new Date(issueDate.getTime() + validityVal * 24 * 60 * 60 * 1000);
       const formatD = (d: Date) => d.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -712,7 +712,7 @@ export function QuotesView({ products }: QuotesViewProps) {
                   <div key={q.id} className="grid grid-cols-[80px_2.5fr_1.5fr_1.2fr_1.5fr] p-4 text-sm items-center hover:bg-gray-50/50 transition-colors">
                     <div className="font-mono font-bold text-gray-400">#{q.id}</div>
                     <div className="font-bold uppercase truncate pr-4">{q.client_name}</div>
-                    <div className="text-gray-500 font-mono text-xs">{new Date(q.created_at).toLocaleDateString()}</div>
+                    <div className="text-gray-500 font-mono text-xs">{parseDbDate(q.created_at).toLocaleDateString()}</div>
                     <div className="text-right font-mono font-bold text-[var(--ink)]">${Math.round(netAmount).toLocaleString()}</div>
                     <div className="flex gap-2 justify-center">
                       <button

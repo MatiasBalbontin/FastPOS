@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Banknote, CreditCard } from 'lucide-react';
 import { toast } from 'sonner';
-import { cn } from '../lib/utils';
+import { cn, parseDbDate } from '../lib/utils';
 
 interface ExpensesViewProps {
   onRefresh: () => void;
@@ -117,7 +117,7 @@ export function ExpensesView({ onRefresh }: ExpensesViewProps) {
         <div className="divide-y divide-[var(--line)] max-h-96 overflow-auto">
           {expenses.map((exp: any) => (
             <div key={exp.id} className={cn("grid grid-cols-[1.5fr_3fr_1.5fr_1.5fr_100px] p-4 text-sm items-center hover:bg-gray-50/50 transition-colors", exp.status === 'voided' && "opacity-50 bg-red-50/30 text-gray-400")}>
-              <div className="text-gray-500 font-mono text-xs">{new Date(exp.created_at).toLocaleString()}</div>
+              <div className="text-gray-500 font-mono text-xs">{parseDbDate(exp.created_at).toLocaleString()}</div>
               <div className={cn("font-bold", exp.status === 'voided' && "line-through")}>
                 {exp.description}
                 {exp.status === 'voided' && <span className="text-[9px] bg-red-100 text-red-700 px-2 py-0.5 rounded font-bold uppercase ml-2">Anulado</span>}

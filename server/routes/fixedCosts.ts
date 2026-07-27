@@ -33,6 +33,23 @@ router.post('/', (req, res, next) => {
   }
 });
 
+// Edit Fixed Cost
+router.put('/:id', (req, res, next) => {
+  const { id } = req.params;
+  const { description, amount } = req.body;
+  try {
+    if (!description || !amount) {
+      throw new Error('Todos los campos son requeridos');
+    }
+    db.prepare(`
+      UPDATE fixed_costs SET description = ?, amount = ? WHERE id = ?
+    `).run(description.toUpperCase(), amount, id);
+    res.json({ success: true });
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 // Delete Fixed Cost
 router.delete('/:id', (req, res, next) => {
   const { id } = req.params;

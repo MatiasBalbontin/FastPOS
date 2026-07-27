@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Check, Users, UserPlus, Shield, Trash2, Edit2, Key, CheckCircle, XCircle, Terminal, CloudDownload, RefreshCw, AlertTriangle, Eye, Copy } from 'lucide-react';
 import { toast } from 'sonner';
+import { parseDbDate } from '../lib/utils';
 
 interface UserItem {
   id: number;
@@ -790,7 +791,7 @@ export function ConfigurationView({ currentUser }: ConfigurationViewProps) {
               <div className="divide-y divide-[var(--line)] max-h-[500px] overflow-y-auto font-medium">
                 {auditLogs.map((log: any) => (
                   <div key={log.id} className="grid grid-cols-[1.5fr_1fr_1.5fr_3fr] p-4 text-xs items-start hover:bg-gray-50/40">
-                    <div className="font-mono text-gray-500">{new Date(log.created_at).toLocaleString()}</div>
+                    <div className="font-mono text-gray-500">{parseDbDate(log.created_at).toLocaleString()}</div>
                     <div className="font-bold text-[var(--ink)] uppercase tracking-wide">{log.username || 'Sistema'}</div>
                     <div>
                       <span className="bg-slate-100 text-slate-700 text-[9px] font-bold uppercase px-2 py-0.5 rounded-full border border-slate-200">

@@ -23,7 +23,7 @@ import {
   Cell, 
   LabelList 
 } from 'recharts';
-import { cn } from '../lib/utils';
+import { cn, parseDbDate } from '../lib/utils';
 import { Analytics } from './Types';
 import { toast } from 'sonner';
 
@@ -97,15 +97,17 @@ export function AnalyticsView({ analytics, startDate, setStartDate, endDate, set
 
   const COLORS = ['#005EB8', '#FFC785', '#10B981', '#F59E0B', '#6366F1'];
 
-  const currentRevenue = analytics.summary.collected_revenue || 0;
-  const currentCost = analytics.summary.collected_cost || 0;
-  const currentProfit = currentRevenue - currentCost;
-  const margin = currentRevenue > 0 ? (currentProfit / currentRevenue) * 100 : 0;
+  // "Ventas Netas" drives the break-even chart below, same as before the redesign.
+  const currentRevenue = analytics.summary.net_sales_revenue || 0;
+  const grossRevenue = analytics.summary.gross_sales_revenue || 0;
+  const ivaDebito = analytics.summary.iva_debito || 0;
+  const netProfit = analytics.summary.net_profit || 0;
+  const netMargin = analytics.summary.net_margin || 0;
 
   // Helper to format shift duration
   const getDurationText = (opening: string, closing: string | null) => {
-    const end = closing ? new Date(closing).getTime() : new Date().getTime();
-    const start = new Date(opening).getTime();
+    const end = closing ? parseDbDate(closing).getTime() : new Date().getTime();
+    const start = parseDbDate(opening).getTime();
     const diffMs = end - start;
     const totalMinutes = Math.floor(diffMs / 60000);
     const hrs = Math.floor(totalMinutes / 60);
@@ -196,16 +198,21 @@ export function AnalyticsView({ analytics, startDate, setStartDate, endDate, set
             </div>
           </div>
 
-          <div className="grid grid-cols-5 gap-6">
-            <StatCard label="Ingresos Cobrados" value={`$${currentRevenue.toLocaleString()}`} />
-            <StatCard label="Costo (Efectivo/Tj)" value={`$${currentCost.toLocaleString()}`} />
-            <StatCard label="Utilidad Real (FIFO)" value={`$${currentProfit.toLocaleString()}`} trend />
-            <StatCard 
-              label="Margen de Utilidad" 
-              value={`${margin.toFixed(2)}%`} 
-              highlight={margin > 20}
+          <div className="grid grid-cols-4 gap-6">
+            <StatCard label="Ventas Totales Brutas" value={`$${grossRevenue.toLocaleString()}`} />
+            <StatCard label="IVA Débito" value={`$${ivaDebito.toLocaleString()}`} />
+            <StatCard label="Ventas Netas" value={`$${currentRevenue.toLocaleString()}`} />
+            <StatCard label="Utilidad Real (Neta)" value={`$${netProfit.toLocaleString()}`} trend />
+          </div>
+
+          <div className="grid grid-cols-3 gap-6">
+            <StatCard
+              label="Margen de Utilidad (Neto)"
+              value={`${netMargin.toFixed(2)}%`}
+              highlight={netMargin > 20}
             />
-            <StatCard label="Valor Inventario" value={`$${analytics.summary.total_inventory_value?.toLocaleString() || 0}`} />
+            <StatCard label="Valor Inventario (Precio Venta)" value={`$${analytics.summary.total_inventory_value_sale?.toLocaleString() || 0}`} />
+            <StatCard label="Valor Inventario (Precio Costo)" value={`$${analytics.summary.total_inventory_value?.toLocaleString() || 0}`} />
           </div>
 
           <div className="grid grid-cols-3 gap-8">
@@ -279,8 +286,13 @@ export function AnalyticsView({ analytics, startDate, setStartDate, endDate, set
                   <div className="text-center text-sm text-gray-400 italic px-8">
                     Configura tus Costos Fijos para ver tu punto de equilibrio.
                   </div>
+                ) : netMargin <= 0 ? (
+                  <div className="text-center text-sm text-gray-400 italic px-8">
+                    El margen de utilidad neto del período es cero o negativo, por lo que no existe una meta de ventas que cubra los costos fijos.
+                  </div>
                 ) : (() => {
-                  const breakEven = analytics.summary.total_fixed_costs;
+                  // Meta de ventas (netas) para cubrir los costos fijos: Costos Fijos / Margen de Utilidad.
+                  const breakEven = analytics.summary.total_fixed_costs / (netMargin / 100);
                   const data = [
                     { name: 'Recaudado', value: currentRevenue },
                     { name: 'Restante', value: Math.max(0, breakEven - currentRevenue) }
@@ -378,12 +390,12 @@ export function AnalyticsView({ analytics, startDate, setStartDate, endDate, set
                       <div className="text-xs text-gray-500 space-y-1">
                         <div className="flex items-center gap-1.5">
                           <span className="text-[9px] bg-green-100 text-green-800 font-bold px-1.5 py-0.2 rounded uppercase">Inicio</span>
-                          <span>{new Date(s.opening_time).toLocaleString()}</span>
+                          <span>{parseDbDate(s.opening_time).toLocaleString()}</span>
                         </div>
                         {s.closing_time ? (
                           <div className="flex items-center gap-1.5">
                             <span className="text-[9px] bg-red-100 text-red-800 font-bold px-1.5 py-0.2 rounded uppercase">Fin</span>
-                            <span>{new Date(s.closing_time).toLocaleString()} ({getDurationText(s.opening_time, s.closing_time)})</span>
+                            <span>{parseDbDate(s.closing_time).toLocaleString()} ({getDurationText(s.opening_time, s.closing_time)})</span>
                           </div>
                         ) : (
                           <div className="flex items-center gap-1.5 text-blue-600 font-bold animate-pulse">
