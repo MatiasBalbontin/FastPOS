@@ -1,7 +1,7 @@
 # FastPOS — Plan de Comercialización: Modalidad A (Descarga Local)
 
-**Versión:** 1.0  
-**Fecha:** 2026-07-01  
+**Versión:** 1.1  
+**Fecha:** 2026-07-01 (última actualización: 2026-07-28)  
 **Autor:** Matías Balbontín  
 
 ---
@@ -22,12 +22,39 @@ El usuario `admin` no podía generar ventas al fiado (`cuenta_por_cobrar`) desde
 
 **Pendiente:** auditar si existen otros permisos granulares (fuera de los módulos base) con el mismo patrón de omisión.
 
+### 2026-07-25 — Exportación de Historial a Excel
+
+Se agregó un botón "Exportar a Excel" en Historial (`GET /api/history/export`) que descarga ventas, abonos y gastos del rango de fechas filtrado en pantalla, línea por línea (no agrupado por ticket) e incluyendo anulados con su estado. Objetivo: permitir cuadrar montos manualmente en Excel en vez de sumar a mano navegando la pantalla, cuando los reportes del sistema no calzan con un conteo propio.
+
+### 2026-07-27 — Gestión de usuarios: solo admin ve y edita permisos
+
+Antes, cualquier operador con el permiso `configuration` podía ver y modificar los datos de **todos** los demás usuarios (permisos, contraseñas, estado de cuenta). Ahora: solo `admin` puede ver/crear/eliminar operadores o tocar sus permisos; el resto de los usuarios solo puede ver y cambiar su propia contraseña. Se agregó además "Ver Contraseña" para admin (columna `password_plain` en `users`, poblada solo desde ahora en adelante — cuentas antiguas requieren restablecer su clave una vez para poder verla).
+
+⚠️ **Nota de seguridad para revisar antes del lanzamiento:** guardar la contraseña en texto plano (`password_plain`) fue una decisión explícita del cliente para poder recuperarla desde la UI, pero es una regresión respecto al hardening planeado en la Fase 0 (bcrypt). Si el archivo `inventory.db` cae en manos equivocadas, expone contraseñas en texto plano de cualquier usuario cuya clave se haya creado/reseteado después de este cambio. Vale la pena decidir conscientemente si esto se mantiene para el producto que se va a vender, o si se limita "Ver Contraseña" a un flujo de "generar nueva clave temporal" en vez de guardar la original.
+
+### 2026-07-27 — Corrección de zona horaria en toda la app
+
+SQLite guarda `created_at`/`opening_time`/`closing_time` en UTC sin indicador de zona (`"2026-07-27 18:00:00"`). El frontend hacía `new Date(...)` directo sobre ese string, y JavaScript lo interpretaba como si ya fuera hora local, desfasando cada hora mostrada en la app (4 horas en Chile). Se corrigió con una función `parseDbDate()` (`src/lib/utils.ts`) aplicada en Historial, Reportes, Gastos, Costos Fijos, Cuentas por Cobrar, Cotizaciones, Auditoría y resumen de turno en el POS. Verificado con datos reales de la base.
+
+### 2026-07-27 — Caja por operador (antes era un registro global compartido)
+
+`cash_shifts` no distinguía operador: "¿hay algún turno abierto en todo el sistema?". Al crear un usuario nuevo y entrar al POS, este heredaba un turno ajeno abierto días antes (residuo de un bug de cierre ya corregido de paso: al cerrar caja, la pantalla no volvía a pedir abrir turno hasta salir y reentrar al módulo) y podía vender sin declarar su propio efectivo inicial. Ahora cada operador abre y cierra su propio turno; ventas, abonos y gastos quedan atados a `shift_id` para que el arqueo de cada uno refleje solo sus propios movimientos, incluso con varios turnos abiertos a la vez.
+
+### 2026-07-27 — Rediseño de Reportes y corrección del margen real
+
+Las tarjetas de Reportes mezclaban métricas distintas (ingreso solo efectivo/tarjeta vs. flujo de caja neto con abonos y gastos incluidos) sin dejar claro por qué no cuadraban entre sí. Se rediseñó a: Ventas Totales Brutas (todas las formas de pago, IVA incluido) → IVA Débito → Ventas Netas → Utilidad Real → Margen de Utilidad, más Valor de Inventario separado en precio de venta y precio de costo. Punto de equilibrio corregido a `Costos Fijos ÷ Margen de Utilidad` (antes mostraba el monto de costos fijos tal cual, como si fuera la meta de ventas).
+
+Además se encontró que el costo de producto se carga **con IVA incluido** (bruto), pero se restaba directo de la venta neta — subestimando el margen real (verificado con datos reales: subía de 40,5% a 50% correcto tras despojar el IVA también del costo). Corregido en Reportes, y se agregó el margen visible por venta en Historial y por producto en Inventario (oculto junto con el costo, mismo toggle).
+
+**Pendiente:** auditar si existen otros permisos granulares (fuera de los módulos base) con el mismo patrón de omisión. También quedó pendiente un bug menor y no crítico: `DELETE /api/users/:id` falla con `FOREIGN KEY constraint failed` si el usuario tiene registros en `audit_logs` (le pasa a cualquier operador que haya iniciado sesión alguna vez).
+
 **Próximos pasos sugeridos (alineados al objetivo de control operativo, offline):**
-1. Auditoría rápida de permisos: listar todo chequeo ad-hoc fuera de `requirePermission`/`requireAnyPermission` (patrón `session.permissions?.includes(...)` directo) y unificarlos.
-2. Priorizar Fase 0 (hardening: bcrypt, `.env` seguro, Zod completo) antes de seguir agregando funciones — es lo que habilita vender con confianza.
-3. No expandir el alcance hacia contabilidad formal (boletas/facturas electrónicas SII, libros, conciliación bancaria): mantiene la promesa de "simple, offline, instalación en 1 clic".
-4. Dado que "fiar" ahora genera deuda real desde más usuarios, adelantar Fase 2 (respaldo automático) para no perder ese dato ante falla del PC.
-5. Agregar una nota breve en el manual/UI aclarando que FastPOS es control operativo, no un sistema contable, para alinear expectativas del cliente.
+1. Decidir el tratamiento de `password_plain` (ver nota de seguridad arriba) antes de congelar el modelo de datos para la versión vendible.
+2. Priorizar Fase 0 (hardening: bcrypt para el hash principal, `.env` seguro, Zod completo) antes de seguir agregando funciones — es lo que habilita vender con confianza.
+3. Corregir el bug de `FOREIGN KEY constraint failed` al eliminar operadores (housekeeping menor, no urgente).
+4. No expandir el alcance hacia contabilidad formal (boletas/facturas electrónicas SII, libros, conciliación bancaria): mantiene la promesa de "simple, offline, instalación en 1 clic".
+5. Con la caja ahora por operador y el fiado generando deuda real desde cualquier usuario, adelantar Fase 2 (respaldo automático) para no perder ese dato ante falla del PC.
+6. Agregar una nota breve en el manual/UI aclarando que FastPOS es control operativo, no un sistema contable, para alinear expectativas del cliente.
 
 ---
 
