@@ -318,7 +318,7 @@ export function AnalyticsView({ analytics, startDate, setStartDate, endDate, set
           <div className="grid grid-cols-2 gap-8">
             <div className="p-8 border border-[var(--line)] bg-white rounded-2xl shadow-sm">
               <h3 className="text-sm font-bold uppercase mb-8 text-gray-500 tracking-wider">
-                Ranking de Salidas {metric === 'monto' ? '(Recaudación)' : '(Volumen)'}
+                Ranking de Salidas por Producto {metric === 'monto' ? '(Recaudación)' : '(Volumen)'}
               </h3>
               <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
@@ -339,12 +339,35 @@ export function AnalyticsView({ analytics, startDate, setStartDate, endDate, set
               </div>
             </div>
 
-            <div className="p-8 border border-[var(--line)] bg-white rounded-2xl shadow-sm flex flex-col items-center justify-center relative">
+            <div className="p-8 border border-[var(--line)] bg-white rounded-2xl shadow-sm">
+              <h3 className="text-sm font-bold uppercase mb-8 text-gray-500 tracking-wider">
+                Ranking de Salidas por Familia {metric === 'monto' ? '(Recaudación)' : '(Volumen)'}
+              </h3>
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={analytics.categoryAnalysis}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                    <XAxis dataKey="type" fontSize={10} tick={{ fill: '#6B7280' }} axisLine={false} tickLine={false} />
+                    <YAxis fontSize={10} tick={{ fill: '#6B7280' }} axisLine={false} tickLine={false} tickFormatter={(val) => metric === 'monto' ? `$${val.toLocaleString()}` : val.toLocaleString()} />
+                    <Tooltip
+                      formatter={(value: any) => [metric === 'monto' ? `$${value.toLocaleString()}` : value.toLocaleString(), metric === 'monto' ? 'Recaudación' : 'Cantidad']}
+                      contentStyle={{ backgroundColor: '#fff', border: '1px solid #E5E7EB', borderRadius: '12px', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                      itemStyle={{ color: '#111827', fontSize: '12px', fontWeight: '600' }}
+                    />
+                    <Bar dataKey={metric === 'monto' ? 'revenue' : 'volume'} fill="#10B981" radius={[4, 4, 0, 0]}>
+                      <LabelList dataKey={metric === 'monto' ? 'revenue' : 'volume'} position="top" formatter={(val: any) => metric === 'monto' ? `$${val.toLocaleString()}` : val.toLocaleString()} style={{ fill: '#10B981', fontSize: 10, fontWeight: 'bold' }} />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="col-span-2 p-8 border border-[var(--line)] bg-white rounded-2xl shadow-sm flex flex-col items-center justify-center relative min-h-[350px]">
               <h3 className="text-sm font-bold uppercase mb-8 text-gray-500 tracking-wider self-start">
                 Avance de Recaudación (Meta de Equilibrio)
               </h3>
               
-              <div className="w-full flex-1 flex items-center justify-center relative min-h-[220px]">
+              <div className="w-full flex-1 flex items-center justify-center relative min-h-[250px]">
                 {!analytics.summary.total_fixed_costs ? (
                   <div className="text-center text-sm text-gray-400 italic px-8">
                     Configura tus Costos Fijos para ver tu punto de equilibrio.
