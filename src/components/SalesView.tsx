@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Search, 
-  ShoppingCart, 
-  Plus, 
-  Minus, 
-  Trash2, 
-  ArrowRight, 
-  X, 
-  Banknote, 
-  CreditCard, 
-  FileMinus, 
+import {
+  Search,
+  ShoppingCart,
+  Plus,
+  Minus,
+  Trash2,
+  ArrowRight,
+  X,
+  Banknote,
+  CreditCard,
+  FileMinus,
   AlertTriangle,
   Package,
   Clock,
@@ -43,12 +43,12 @@ const normalizeString = (str: string | null | undefined): string => {
 const matchProduct = (product: Product, query: string): boolean => {
   const queryNormalized = normalizeString(query).trim();
   if (!queryNormalized) return false;
-  
+
   const queryTokens = queryNormalized.split(/\s+/);
   const nameNormalized = normalizeString(product.name);
   const idNormalized = normalizeString(product.id);
-  
-  return queryTokens.every(token => 
+
+  return queryTokens.every(token =>
     nameNormalized.includes(token) || idNormalized.includes(token)
   );
 };
@@ -56,14 +56,14 @@ const matchProduct = (product: Product, query: string): boolean => {
 const matchCustomer = (customer: any, query: string): boolean => {
   const queryNormalized = normalizeString(query).trim();
   if (!queryNormalized) return false;
-  
+
   const queryTokens = queryNormalized.split(/\s+/);
   const fullNameNormalized = normalizeString(`${customer.first_name || ''} ${customer.last_name || ''}`);
   const rutNormalized = normalizeString(customer.rut || '');
   const contactNormalized = normalizeString(customer.contact || '');
-  
-  return queryTokens.every(token => 
-    fullNameNormalized.includes(token) || 
+
+  return queryTokens.every(token =>
+    fullNameNormalized.includes(token) ||
     rutNormalized.includes(token) ||
     contactNormalized.includes(token)
   );
@@ -118,7 +118,7 @@ function PaymentModal({ total, onClose, onConfirm, canDeferPayment }: PaymentMod
     }
   };
 
-  const filteredCustomers = searchCustomer.trim() ? customers.filter(c => 
+  const filteredCustomers = searchCustomer.trim() ? customers.filter(c =>
     matchCustomer(c, searchCustomer)
   ) : [];
 
@@ -187,8 +187,8 @@ function PaymentModal({ total, onClose, onConfirm, canDeferPayment }: PaymentMod
                 disabled={!canDeferPayment}
                 className={cn(
                   "flex flex-col items-center gap-4 p-6 border-2 border-[var(--line)] transition-all group rounded-xl",
-                  canDeferPayment 
-                    ? "hover:bg-[var(--ink)] hover:text-[var(--bg)]" 
+                  canDeferPayment
+                    ? "hover:bg-[var(--ink)] hover:text-[var(--bg)]"
                     : "opacity-30 cursor-not-allowed bg-gray-50 border-gray-200"
                 )}
                 title={!canDeferPayment ? "No tiene permisos para fiar (solicite autorización)" : undefined}
@@ -335,7 +335,7 @@ function PaymentModal({ total, onClose, onConfirm, canDeferPayment }: PaymentMod
                     </div>
                   ) : (
                     <div className="p-6 border border-green-200 bg-green-50 rounded-xl text-center relative">
-                      <button onClick={() => setSelectedCustomer(null)} className="absolute top-2 right-2 text-gray-400 hover:text-gray-700"><X size={16}/></button>
+                      <button onClick={() => setSelectedCustomer(null)} className="absolute top-2 right-2 text-gray-400 hover:text-gray-700"><X size={16} /></button>
                       <div className="text-[10px] font-bold text-green-700 uppercase tracking-widest mb-1">Cliente Seleccionado</div>
                       <div className="text-xl font-bold text-green-900">{selectedCustomer.first_name} {selectedCustomer.last_name}</div>
                       <div className="text-xs text-green-700 opacity-70 mt-1">{selectedCustomer.rut}</div>
@@ -344,9 +344,9 @@ function PaymentModal({ total, onClose, onConfirm, canDeferPayment }: PaymentMod
 
                   <div className="flex gap-4 mt-6">
                     <button onClick={() => { setMethod(null); setSelectedCustomer(null); setSearchCustomer(''); }} className="flex-1 border border-[var(--line)] py-4 font-bold uppercase text-xs hover:bg-white transition-colors text-center rounded-xl">Volver</button>
-                    <button 
+                    <button
                       disabled={!selectedCustomer}
-                      onClick={() => onConfirm('cuenta_por_cobrar', selectedCustomer?.id)} 
+                      onClick={() => onConfirm('cuenta_por_cobrar', selectedCustomer?.id)}
                       className="flex-[2] bg-[var(--ink)] text-[var(--bg)] py-4 font-bold uppercase text-xs hover:opacity-90 transition-opacity disabled:opacity-30 rounded-xl"
                     >
                       Confirmar Fiado
@@ -357,12 +357,12 @@ function PaymentModal({ total, onClose, onConfirm, canDeferPayment }: PaymentMod
                 <div className="space-y-4">
                   <div className="flex justify-between items-center mb-2">
                     <h4 className="font-bold text-sm">Nuevo Cliente</h4>
-                    <button onClick={() => setIsCreatingCustomer(false)} className="text-gray-400 hover:text-gray-700"><X size={16}/></button>
+                    <button onClick={() => setIsCreatingCustomer(false)} className="text-gray-400 hover:text-gray-700"><X size={16} /></button>
                   </div>
-                  <input type="text" placeholder="RUT (Opcional)" value={newCustomer.rut} onChange={e => setNewCustomer({...newCustomer, rut: e.target.value})} className="w-full bg-white border border-[var(--line)] p-3 text-sm rounded focus:outline-none" />
-                  <input type="text" placeholder="Nombre *" value={newCustomer.first_name} onChange={e => setNewCustomer({...newCustomer, first_name: e.target.value})} className="w-full bg-white border border-[var(--line)] p-3 text-sm rounded focus:outline-none" />
-                  <input type="text" placeholder="Apellido *" value={newCustomer.last_name} onChange={e => setNewCustomer({...newCustomer, last_name: e.target.value})} className="w-full bg-white border border-[var(--line)] p-3 text-sm rounded focus:outline-none" />
-                  
+                  <input type="text" placeholder="RUT (Opcional)" value={newCustomer.rut} onChange={e => setNewCustomer({ ...newCustomer, rut: e.target.value })} className="w-full bg-white border border-[var(--line)] p-3 text-sm rounded focus:outline-none" />
+                  <input type="text" placeholder="Nombre *" value={newCustomer.first_name} onChange={e => setNewCustomer({ ...newCustomer, first_name: e.target.value })} className="w-full bg-white border border-[var(--line)] p-3 text-sm rounded focus:outline-none" />
+                  <input type="text" placeholder="Apellido *" value={newCustomer.last_name} onChange={e => setNewCustomer({ ...newCustomer, last_name: e.target.value })} className="w-full bg-white border border-[var(--line)] p-3 text-sm rounded focus:outline-none" />
+
                   <div className="flex gap-4 pt-2">
                     <button onClick={() => setIsCreatingCustomer(false)} className="flex-1 border border-[var(--line)] py-3 font-bold uppercase text-xs hover:bg-white transition-colors text-center rounded-xl">Cancelar</button>
                     <button disabled={!newCustomer.first_name || !newCustomer.last_name} onClick={handleCreateCustomer} className="flex-1 bg-[var(--primary)] text-white py-3 font-bold uppercase text-xs hover:opacity-90 transition-opacity disabled:opacity-30 rounded-xl">Guardar</button>
@@ -740,7 +740,7 @@ export function SalesView({ searchInputRef, onSale, products, userPermissions, c
             <h2 className="text-3xl font-bold tracking-tight text-[var(--ink)] mb-1">Punto de Venta</h2>
             <p className="text-sm text-gray-500">Escanee productos para cargar la comanda.</p>
           </div>
-          
+
           <div className="flex items-center gap-3">
             {/* Operator User Badge */}
             <div className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-xl border border-[var(--line)] shadow-sm">
@@ -755,7 +755,7 @@ export function SalesView({ searchInputRef, onSale, products, userPermissions, c
               <div className="text-xs font-black uppercase text-gray-400">Duración:</div>
               <div className="text-sm font-bold font-mono text-[var(--primary)]">{elapsedText}</div>
             </div>
-            
+
             <button
               onClick={() => setClosingModalOpen(true)}
               className="bg-red-50 hover:bg-red-600 hover:text-white text-red-600 font-bold uppercase text-xs px-5 py-3 rounded-xl transition-all shadow-md flex items-center gap-1.5"
@@ -837,14 +837,14 @@ export function SalesView({ searchInputRef, onSale, products, userPermissions, c
                 <div className="flex justify-between items-center">
                   <div className="flex items-center border border-[var(--line)] bg-white rounded overflow-hidden">
                     <button onClick={() => updateQuantity(item.product.id, -1)} className="p-2 hover:bg-gray-100 border-r border-[var(--line)]"><Minus size={12} /></button>
-                    <input 
-                      type="number" 
+                    <input
+                      type="number"
                       min="1"
-                      value={item.quantity} 
+                      value={item.quantity}
                       onChange={(e) => setQuantityExact(item.product.id, e.target.value)}
                       onBlur={(e) => {
                         if (e.target.value === '' || Number(e.target.value) < 1) {
-                           setQuantityExact(item.product.id, '1');
+                          setQuantityExact(item.product.id, '1');
                         }
                       }}
                       className="w-12 text-center font-mono text-xs py-1 focus:outline-none focus:bg-blue-50"
@@ -896,7 +896,7 @@ export function SalesView({ searchInputRef, onSale, products, userPermissions, c
 
             <form onSubmit={handleCloseShiftSubmit} className="p-6 space-y-5">
               <p className="text-xs text-gray-500">Ingrese la suma física contada de Efectivo y Tarjetas para contrastar contra el registro del sistema.</p>
-              
+
               <div>
                 <label className="text-[10px] font-bold uppercase text-gray-400 block mb-1">Efectivo Contado ($) *</label>
                 <input

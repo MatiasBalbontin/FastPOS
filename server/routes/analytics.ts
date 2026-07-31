@@ -6,6 +6,55 @@ const router = express.Router();
 
 router.use(requirePermission('analytics'));
 
+// GET /api/analytics/sales-details - Get full, detailed list of sales line-items for export.
+router.get('/sales-details', (req, res, next) => {
+  const { startDate, endDate } = req.query;
+
+  // Get configured timezone
+  const tzSetting = db.prepare("SELECT value FROM company_settings WHERE key = 'timezone_offset'").get() as { value: string } | undefined;
+  const tz = tzSetting?.value || 'localtime';
+
+  let dateFilter = "";
+  let params: any[] = [];
+
+  if (startDate && endDate) {
+    dateFilter = "datetime(s.created_at, ?) BETWEEN datetime(?) AND datetime(?)";
+    params = [tz, startDate, endDate];
+  } else {
+    dateFilter = "datetime(s.created_at, ?) >= datetime('now', '-30 days', ?)";
+    params = [tz, tz];
+  }
+
+  try {
+    const salesDetails = db.prepare(`
+      SELECT
+        s.ticket_id,
+        s.created_at,
+        s.product_id,
+        p.name as product_name,
+        p.type as product_family,
+        s.quantity,
+        s.sale_price,
+        (s.quantity * s.sale_price) as line_total,
+        s.total_cost,
+        s.payment_method,
+        c.first_name || ' ' || c.last_name as customer_name,
+        u.username as operator_name
+      FROM sales s
+      JOIN products p ON s.product_id = p.id
+      LEFT JOIN customers c ON s.customer_id = c.id
+      LEFT JOIN cash_shifts cs ON s.shift_id = cs.id
+      LEFT JOIN users u ON cs.user_id = u.id
+      WHERE ${dateFilter} AND s.status = 'completed'
+      ORDER BY s.created_at ASC
+    `).all(...params);
+
+    res.json(salesDetails);
+  } catch (error: any) {
+    next(error);
+  }
+});
+
 // Analytics
 router.get('/', (req, res, next) => {
   const { period = 'month', startDate, endDate } = req.query;

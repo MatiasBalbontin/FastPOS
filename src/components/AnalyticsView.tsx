@@ -8,7 +8,8 @@ import {
   Clock,
   AlertTriangle,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Download
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -26,6 +27,7 @@ import {
 import { cn, parseDbDate } from '../lib/utils';
 import { Analytics } from './Types';
 import { toast } from 'sonner';
+import * as XLSX from 'xlsx';
 
 interface StatCardProps {
   label: string;
@@ -63,6 +65,57 @@ export function AnalyticsView({ analytics, startDate, setStartDate, endDate, set
   const [metric, setMetric] = useState<'monto' | 'cantidad'>('monto');
   const [tempStartDate, setTempStartDate] = useState(startDate);
   const [tempEndDate, setTempEndDate] = useState(endDate);
+  const [exportingSales, setExportingSales] = useState(false);
+
+  const handleExportSalesDetails = async () => {
+    setExportingSales(true);
+    try {
+      const res = await fetch(`/api/analytics/sales-details?startDate=${startDate}T00:00:00&endDate=${endDate}T23:59:59`);
+      if (!res.ok) throw new Error();
+      const sales = await res.json();
+
+      const IVA_RATE = 0.19;
+
+      const exportData = sales.map((s: any) => {
+        const grossTotal = s.line_total || 0;
+        const netTotal = grossTotal / (1 + IVA_RATE);
+        const grossCost = s.total_cost || 0;
+        const netCost = grossCost / (1 + IVA_RATE);
+        const netProfit = netTotal - netCost;
+        const netMargin = netTotal > 0 ? (netProfit / netTotal) * 100 : 0;
+
+        return {
+          'TICKET': s.ticket_id,
+          'FECHA_HORA': parseDbDate(s.created_at).toLocaleString(),
+          'ID_PRODUCTO': s.product_id,
+          'PRODUCTO': s.product_name,
+          'CATEGORIA_FAMILIA': s.product_family || 'SIN CATEGORÍA',
+          'CANTIDAD': s.quantity,
+          'PRECIO_VENTA_BRUTO': s.sale_price,
+          'TOTAL_BRUTO': grossTotal,
+          'TOTAL_NETO': Math.round(netTotal),
+          'IVA_DEBITO': Math.round(grossTotal - netTotal),
+          'COSTO_TOTAL_BRUTO': Math.round(grossCost),
+          'COSTO_TOTAL_NETO': Math.round(netCost),
+          'UTILIDAD_NETA': Math.round(netProfit),
+          'MARGEN_NETO': `${Math.round(netMargin)}%`,
+          'METODO_PAGO': s.payment_method === 'cash' ? 'EFECTIVO' : s.payment_method === 'card' ? 'TARJETA' : 'FIADO',
+          'CLIENTE': s.customer_name || 'VENTA GENERAL',
+          'CAJERO_OPERADOR': s.operator_name || 'SISTEMA'
+        };
+      });
+
+      const worksheet = XLSX.utils.json_to_sheet(exportData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Detalle Ventas");
+      XLSX.writeFile(workbook, `detalle_ventas_fastpos_${startDate}_a_${endDate}.xlsx`);
+      toast.success('Reporte de ventas exportado con éxito');
+    } catch (e) {
+      toast.error('Error al exportar el detalle de ventas');
+    } finally {
+      setExportingSales(false);
+    }
+  };
 
   // Shifts state
   const [shifts, setShifts] = useState<any[]>([]);
@@ -185,6 +238,16 @@ export function AnalyticsView({ analytics, startDate, setStartDate, endDate, set
                   />
                 </div>
               </div>
+
+              <button
+                onClick={handleExportSalesDetails}
+                disabled={exportingSales}
+                title="Descarga un reporte de ventas detallado en Excel para el rango seleccionado"
+                className="border border-[var(--line)] hover:bg-gray-50 text-[var(--ink)] bg-white font-bold uppercase tracking-wider text-xs px-5 py-3 rounded-xl transition-all shadow-sm h-[46px] flex items-center gap-2 disabled:opacity-50"
+              >
+                <Download size={14} />
+                {exportingSales ? 'Exportando...' : 'Exportar Excel'}
+              </button>
 
               <button
                 onClick={() => {

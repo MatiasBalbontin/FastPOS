@@ -122,6 +122,11 @@ export function HistoryView({ onRefresh }: HistoryViewProps) {
                     {item.type === 'sale' ? (item.method === 'cuenta_por_cobrar' ? 'Venta Fiada' : 'Venta') : item.type === 'payment' ? 'Abono Recibido' : 'Gasto Registrado'}
                   </span>
                   {item.customer_name && <span className="text-[10px] text-gray-500">CLIENTE: {item.customer_name}</span>}
+                  {item.sales_dates && (
+                    <span className="text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-black tracking-wide">
+                      Ventas: {item.sales_dates}
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="text-right">

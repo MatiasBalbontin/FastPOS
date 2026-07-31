@@ -59,7 +59,19 @@ router.get('/', requirePermission('history'), (req, res, next) => {
         p.created_at,
         p.amount as total_amount,
         '[]' as items,
-        c.first_name || ' ' || c.last_name as customer_name
+        c.first_name || ' ' || c.last_name as customer_name,
+        (
+          SELECT group_concat(strftime('%d-%m-%Y', datetime(s.created_at, '${tz}')), ', ')
+          FROM (
+            SELECT DISTINCT ticket_id, created_at 
+            FROM sales 
+            WHERE customer_id = p.customer_id 
+              AND payment_method = 'cuenta_por_cobrar' 
+              AND status = 'completed'
+              AND created_at <= p.created_at
+            ORDER BY created_at ASC
+          ) s
+        ) as sales_dates
       FROM customer_payments p
       JOIN customers c ON p.customer_id = c.id
       WHERE 1=1 ${paymentsDateFilter}
@@ -150,7 +162,19 @@ router.get('/export', requirePermission('history'), (req, res, next) => {
         p.amount,
         p.method,
         p.status,
-        c.first_name || ' ' || c.last_name as customer_name
+        c.first_name || ' ' || c.last_name as customer_name,
+        (
+          SELECT group_concat(strftime('%d-%m-%Y', datetime(s.created_at, '${tz}')), ', ')
+          FROM (
+            SELECT DISTINCT ticket_id, created_at 
+            FROM sales 
+            WHERE customer_id = p.customer_id 
+              AND payment_method = 'cuenta_por_cobrar' 
+              AND status = 'completed'
+              AND created_at <= p.created_at
+            ORDER BY created_at ASC
+          ) s
+        ) as sales_dates
       FROM customer_payments p
       JOIN customers c ON p.customer_id = c.id
       ${paymentsDateFilter}
