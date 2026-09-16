@@ -45,10 +45,11 @@ Source: "public\*"; DestDir: "{app}\public"; Flags: ignoreversion recursesubdirs
 ; cd FastPOS && npm install --production
 Source: "node_modules\*"; DestDir: "{app}\node_modules"; Flags: ignoreversion recursesubdirs createallsubdirs
 
-; Node.js portable — opcional. Si existe FastPOS\.node\ al compilar, se empaqueta y el cliente
-; no necesita internet para obtenerlo. Si no existe (como hoy), se omite sin error gracias a
-; "skipifsourcedoesntexist": IniciarFastPOS.bat igual funciona, descargando Node.js portable
-; automáticamente la primera vez que el cliente lo ejecute (requiere internet solo esa vez).
+; Node.js portable EMBEBIDO. La carpeta FastPOS\.node\ (Node v20.11.1 win-x64) se empaqueta
+; para que el cliente NO necesite internet en el primer arranque y para garantizar la ABI
+; correcta de better-sqlite3 (modulo nativo). IniciarFastPOS.bat SIEMPRE prefiere este Node
+; embebido sobre el del sistema. Si por algun motivo se compila sin .node\, "skipifsourcedoesntexist"
+; evita el error y el .bat cae al modo de descarga automatica (requiere internet solo esa vez).
 Source: ".node\*"; DestDir: "{app}\.node"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist; Check: HasLocalNode
 
 [Icons]

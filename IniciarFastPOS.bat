@@ -7,19 +7,28 @@ echo.
 cd /d "%~dp0"
 
 :: 1. Verificando entorno Node.js
-where node >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    if not exist ".node\node.exe" (
+:: Se PREFIERE siempre el Node.js embebido (.node\) sobre el del sistema. Motivo:
+:: better-sqlite3 es un modulo nativo compilado contra una version/ABI concreta de
+:: Node. Usar el Node del sistema (posible version distinta) puede reventar con
+:: NODE_MODULE_VERSION mismatch. El embebido garantiza la ABI correcta y arranque offline.
+if exist ".node\node.exe" (
+    set "PATH=%~dp0.node;%PATH%"
+    echo Entorno Node.js embebido encontrado. Uso 100%% offline.
+) else (
+    where node >/dev/null 2>&1
+    if %ERRORLEVEL% NEQ 0 (
         echo [!] Descargando entorno Node.js portable silente ^(Por favor espera unos minutos...^)
         if not exist ".node" mkdir ".node"
         powershell -Command "$ProgressPreference = 'SilentlyContinue'; Invoke-WebRequest -Uri 'https://nodejs.org/dist/v20.11.1/node-v20.11.1-win-x64.zip' -OutFile '.node\node.zip'"
         echo [!] Extrayendo archivos...
         powershell -Command "Expand-Archive -Path '.node\node.zip' -DestinationPath '.node' -Force"
-        xcopy /E /Y ".node\node-v20.11.1-win-x64\*" ".node\" >nul
+        xcopy /E /Y ".node\node-v20.11.1-win-x64\*" ".node\" >/dev/null
         rmdir /s /q ".node\node-v20.11.1-win-x64"
         del ".node\node.zip"
+        set "PATH=%~dp0.node;%PATH%"
+    ) else (
+        echo Node.js del sistema detectado ^(sin embebido^). Advertencia: si el POS falla al iniciar, reinstala con la version que incluye Node embebido.
     )
-    set "PATH=%~dp0.node;%PATH%"
 )
 
 echo [1/3] Verificando dependencias...
@@ -37,7 +46,7 @@ if not exist "dist\" (
 )
 
 echo Limpiando puertos en uso para inicio limpio...
-call npx -y kill-port 3000 >nul 2>&1
+call npx -y kill-port 3000 >/dev/null 2>&1
 
 echo [2/3] Abriendo el navegador...
 start http://localhost:3000
@@ -46,10 +55,10 @@ echo [3/3] Arrancando el sistema servidor...
 echo IMPORTANTE: No cierres esta ventana mientras uses el sistema.
 echo.
 
-:: Restart loop — si el servidor termina (ej. por actualizacion automatica), se reinicia solo.
+:: Restart loop - si el servidor termina (ej. por actualizacion automatica), se reinicia solo.
 :loop
 call npm run start
 echo.
 echo [!] El servidor se detuvo. Reiniciando automaticamente en 3 segundos...
-timeout /t 3 /nobreak >nul
+timeout /t 3 /nobreak >/dev/null
 goto :loop
